@@ -1,0 +1,147 @@
+# Orchard Tracker
+
+An Android app for tagging GPS coordinates in the field. Designed for use on a tractor or while walking an orchard — large, high-contrast buttons that are easy to tap with gloves on.
+
+## Features
+
+- **One-tap GPS tagging** — six large buttons each save your current location with a label
+- **Live GPS status** — color-coded accuracy indicator (green ≤ 5 m, amber ≤ 15 m, red > 15 m)
+- **Map view** — all saved points displayed on an OpenStreetMap map with a color-coded legend
+- **Custom labels** — rename any button to suit your operation (changes persist across sessions)
+- **CSV export** — share your tagged points via email, Drive, or any other app
+- **Screen stays on** — display never sleeps while the app is open
+- **Haptic feedback** — short vibration confirms every saved point without looking at the screen
+- **No account or API key required**
+
+### Default button labels
+
+| Button | Default label |
+|---|---|
+| 🟢 | Gopher |
+| 🔴 | Blight |
+| 🟠 | Blackberry |
+| 🔵 | Broken Irrigation |
+| 🟣 | Prune |
+| 🟡 | End Tank |
+
+All labels can be renamed via **⋮ → Edit Labels** from the main screen.
+
+---
+
+## Requirements
+
+- Android **8.0 (Oreo) or newer** (API 26+)
+- GPS / location permission
+- Internet connection for map tiles (map markers and saved data work fully offline)
+
+---
+
+## Installation
+
+### Option A — Build with Android Studio (recommended)
+
+1. **Install Android Studio** — download from [developer.android.com/studio](https://developer.android.com/studio)
+2. **Clone the repository**
+   ```bash
+   git clone https://github.com/ctdenney/OrchardTracker.git
+   ```
+3. **Open the project** — in Android Studio choose *File → Open* and select the `OrchardTracker` folder
+4. **Let Gradle sync** — Android Studio will download all dependencies automatically (requires an internet connection)
+5. **Connect your phone** — enable *USB Debugging* on the device:
+   - Go to *Settings → About Phone* and tap **Build Number** seven times to unlock Developer Options
+   - Go to *Settings → Developer Options* and enable **USB Debugging**
+   - Connect via USB and accept the prompt on the phone
+6. **Run the app** — press the green **▶ Run** button in Android Studio
+
+### Option B — Build from the command line
+
+1. **Install prerequisites**
+   - [JDK 17](https://adoptium.net/) or newer
+   - Android SDK (install via Android Studio or the standalone SDK tools)
+   - Set the `ANDROID_HOME` environment variable to your SDK path
+
+2. **Clone the repository**
+   ```bash
+   git clone https://github.com/ctdenney/OrchardTracker.git
+   cd OrchardTracker
+   ```
+
+3. **Generate the Gradle wrapper** (first time only)
+   ```bash
+   gradle wrapper --gradle-version=8.4
+   ```
+
+4. **Build a debug APK**
+   ```bash
+   ./gradlew assembleDebug
+   ```
+   The APK will be output to:
+   ```
+   app/build/outputs/apk/debug/app-debug.apk
+   ```
+
+5. **Install on a connected device**
+   ```bash
+   ./gradlew installDebug
+   ```
+   Or copy the APK to your phone and open it (you may need to allow *Install from unknown sources* in your device settings).
+
+---
+
+## Permissions
+
+| Permission | Why it's needed |
+|---|---|
+| `ACCESS_FINE_LOCATION` | Records precise GPS coordinates when a button is pressed |
+| `ACCESS_COARSE_LOCATION` | Fallback if fine location is unavailable |
+| `INTERNET` | Downloads map tiles from OpenStreetMap |
+| `VIBRATE` | Haptic confirmation when a point is saved |
+
+---
+
+## Usage
+
+### Recording a point
+1. Open the app and wait for the GPS indicator to turn amber or green
+2. Tap any of the six tag buttons — the point is saved instantly with a timestamp
+3. A toast notification and short vibration confirm the save
+
+### Viewing saved points
+- Tap **View Map** at the bottom of the main screen
+- The map centers on all your recorded points
+- Tap any marker to see its label, timestamp, and accuracy
+- Use the **Legend** overlay (bottom-left of the map) to see which color is which label
+
+### Renaming buttons
+1. Tap **⋮** (top-right overflow menu) → **Edit Labels**
+2. Type a new name for any button — leave blank to restore the default
+3. Tap **Save Labels**
+
+### Exporting data
+1. Tap **View Map** → **Export CSV**
+2. Choose a share target (email, Google Drive, etc.)
+
+The CSV format is:
+```
+id,tag,latitude,longitude,altitude_m,accuracy_m,timestamp
+```
+
+---
+
+## Tech stack
+
+| Component | Library |
+|---|---|
+| Language | Kotlin |
+| Build | Gradle 8.4 / AGP 8.2 |
+| UI | Material Components for Android |
+| Database | Room (SQLite) |
+| Location | Google Play Services — FusedLocationProviderClient |
+| Maps | OSMDroid (OpenStreetMap, no API key) |
+| Async | Kotlin Coroutines |
+
+---
+
+## License
+
+MIT
