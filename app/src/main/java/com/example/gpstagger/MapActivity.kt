@@ -10,6 +10,7 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
+import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.LinearLayout
@@ -33,7 +34,11 @@ class MapActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Configuration.getInstance().userAgentValue = packageName
+        Configuration.getInstance().apply {
+            userAgentValue    = packageName
+            osmdroidBasePath  = java.io.File(filesDir, "osmdroid")
+            osmdroidTileCache = java.io.File(filesDir, "osmdroid/tiles")
+        }
 
         binding = ActivityMapBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -205,9 +210,28 @@ class MapActivity : AppCompatActivity() {
             .show()
     }
 
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_map, menu)
+        return true
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == android.R.id.home) { finish(); return true }
-        return super.onOptionsItemSelected(item)
+        return when (item.itemId) {
+            android.R.id.home -> { finish(); true }
+            R.id.action_download_offline -> {
+                val center = binding.mapView.mapCenter
+                startActivity(
+                    OfflineMapActivity.intent(
+                        this,
+                        center.latitude,
+                        center.longitude,
+                        binding.mapView.zoomLevelDouble
+                    )
+                )
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
     }
 
     override fun onResume() { super.onResume(); binding.mapView.onResume(); populateLegend() }

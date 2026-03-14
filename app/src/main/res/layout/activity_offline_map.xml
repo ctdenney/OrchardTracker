@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <!-- Map — pan and zoom to the desired area before downloading -->
+    <org.osmdroid.views.MapView
+        android:id="@+id/mapView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- Control panel -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#1E1E1E"
+        android:padding="12dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:text="Pan and zoom to the area you want to use offline, then tap Download."
+            android:textColor="#AAAAAA"
+            android:textSize="13sp" />
+
+        <!-- Zoom range row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Zoom: "
+                android:textColor="#CCCCCC"
+                android:textSize="14sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnZoomMinMinus"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:padding="0dp"
+                android:text="−"
+                android:textSize="18sp"
+                app:strokeColor="#555555" />
+
+            <TextView
+                android:id="@+id/tvZoomMin"
+                android:layout_width="32dp"
+                android:layout_height="wrap_content"
+                android:text="13"
+                android:textAlignment="center"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnZoomMinPlus"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:padding="0dp"
+                android:text="+"
+                android:textSize="18sp"
+                app:strokeColor="#555555" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="6dp"
+                android:text="to"
+                android:textColor="#CCCCCC"
+                android:textSize="14sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnZoomMaxMinus"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:padding="0dp"
+                android:text="−"
+                android:textSize="18sp"
+                app:strokeColor="#555555" />
+
+            <TextView
+                android:id="@+id/tvZoomMax"
+                android:layout_width="32dp"
+                android:layout_height="wrap_content"
+                android:text="17"
+                android:textAlignment="center"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnZoomMaxPlus"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:padding="0dp"
+                android:text="+"
+                android:textSize="18sp"
+                app:strokeColor="#555555" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1" />
+
+            <!-- Zoom level guide -->
+            <TextView
+                android:id="@+id/tvZoomGuide"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="8=region · 13=fields · 18=rows"
+                android:textColor="#666666"
+                android:textSize="11sp" />
+
+        </LinearLayout>
+
+        <!-- Tile / size estimate -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvEstimate"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="—"
+                android:textColor="#CCCCCC"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/tvWarning"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⚠ Large area — reduce zoom or pan to a smaller region"
+                android:textColor="#FFC107"
+                android:textSize="11sp"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+        <!-- Progress (hidden until a download starts) -->
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvDownloadStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <!-- Action buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDownload"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="1"
+                android:text="Download Area"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                app:backgroundTint="#1565C0" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnClearCache"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1"
+                android:text="Clear Cache"
+                android:textSize="12sp"
+                app:strokeColor="#555555" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</LinearLayout>

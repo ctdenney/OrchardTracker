@@ -11,6 +11,7 @@ An Android app for tagging GPS coordinates in the field. Designed for use on a t
 - **CSV export** — share your tagged points via email, Drive, or any other app
 - **Screen stays on** — display never sleeps while the app is open
 - **Haptic feedback** — short vibration confirms every saved point without looking at the screen
+- **Offline map tiles** — download map tiles for any area so the map works without cell service
 - **No account or API key required**
 
 ### Default button labels
@@ -116,6 +117,17 @@ All labels can be renamed via **⋮ → Edit Labels** from the main screen.
 1. Tap **⋮** (top-right overflow menu) → **Edit Labels**
 2. Type a new name for any button — leave blank to restore the default
 3. Tap **Save Labels**
+
+### Downloading offline map tiles
+1. Tap **View Map** → **⋮ → Download Offline Map**
+2. Pan and zoom the map to the area you want to cache
+3. Adjust the **Zoom** range (8 = regional overview, 13 = individual fields, 18 = row-level detail)
+4. Check the tile / size estimate, then tap **Download Area**
+5. A progress bar tracks the download — the app can be used normally once it finishes
+
+> **Tip:** Zoom levels 13–17 cover most orchard work and typically download in under a minute on a good connection. Wider zoom ranges increase download size exponentially.
+
+To free up storage, tap **Clear Cache** on the same screen.
 
 ### Exporting data
 1. Tap **View Map** → **Export CSV**

@@ -32,6 +32,11 @@
             android:parentActivityName=".MainActivity" />
 
         <activity
+            android:name=".OfflineMapActivity"
+            android:exported="false"
+            android:parentActivityName=".MapActivity" />
+
+        <activity
             android:name=".EditLabelsActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity"
