@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "GpsTagger"
+rootProject.name = "OrchardTracker"
 include(":app")
