@@ -38,7 +38,7 @@
             android:parentActivityName=".MapActivity" />
 
         <activity
-            android:name=".EditLabelsActivity"
+            android:name=".ManageTagsActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="adjustResize" />

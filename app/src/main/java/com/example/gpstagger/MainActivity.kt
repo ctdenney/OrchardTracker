@@ -64,6 +64,7 @@ class MainActivity : AppCompatActivity() {
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        TagLibrary.ensureInitialized(this)
         db = LocationDatabase.getDatabase(this)
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
@@ -88,10 +89,13 @@ class MainActivity : AppCompatActivity() {
         checkLocationPermission()
     }
 
-    /** Reads current labels from SharedPreferences and updates every button text. */
+    /** Reads current slot assignments and updates every button text and opacity. */
     private fun applyLabels() {
-        val labels = TagPreferences.getLabels(this)
-        tagButtons.forEachIndexed { i, button -> button.text = labels[i] }
+        tagButtons.forEachIndexed { slot, button ->
+            val tag = TagLibrary.getTagForSlot(this, slot)
+            button.text = tag?.name ?: "(empty)"
+            button.alpha = if (tag != null) 1f else 0.4f
+        }
     }
 
     // ── Options menu ──────────────────────────────────────────────────────────
@@ -102,8 +106,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == R.id.action_edit_labels) {
-            startActivity(Intent(this, EditLabelsActivity::class.java))
+        if (item.itemId == R.id.action_manage_buttons) {
+            startActivity(Intent(this, ManageTagsActivity::class.java))
             return true
         }
         return super.onOptionsItemSelected(item)
@@ -136,12 +140,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun recordLocation(slot: Int) {
+        val tag = TagLibrary.getTagForSlot(this, slot)
+        if (tag == null) {
+            Toast.makeText(this, "No tag assigned to this slot", Toast.LENGTH_SHORT).show()
+            return
+        }
         val loc = currentLocation
         if (loc == null) {
             Toast.makeText(this, "Waiting for GPS fix…", Toast.LENGTH_SHORT).show()
             return
         }
-        val label = TagPreferences.getLabels(this)[slot]
         vibrate()
         lifecycleScope.launch {
             db.locationDao().insert(
@@ -150,12 +158,12 @@ class MainActivity : AppCompatActivity() {
                     longitude = loc.longitude,
                     altitude  = loc.altitude,
                     accuracy  = loc.accuracy,
-                    tag       = label,
+                    tag       = tag.name,
                     slot      = slot
                 )
             )
             runOnUiThread {
-                Toast.makeText(this@MainActivity, "✓ $label recorded", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "✓ ${tag.name} recorded", Toast.LENGTH_SHORT).show()
             }
         }
     }

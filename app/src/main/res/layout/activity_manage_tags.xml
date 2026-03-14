@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#111111">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <!-- ── Active Buttons section ───────────────────────────────────── -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ACTIVE BUTTONS"
+            android:textColor="#888888"
+            android:textSize="12sp"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Tap a slot to assign a tag from the library."
+            android:textColor="#666666"
+            android:textSize="12sp"
+            android:layout_marginBottom="10dp" />
+
+        <LinearLayout
+            android:id="@+id/activeButtonsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#1E1E1E"
+            android:padding="8dp" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#2A2A2A"
+            android:layout_marginVertical="16dp" />
+
+        <!-- ── Tag Library section ───────────────────────────────────────── -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="TAG LIBRARY"
+                android:textColor="#888888"
+                android:textSize="12sp"
+                android:letterSpacing="0.1" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAddTag"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="+ Add"
+                android:textSize="13sp"
+                app:strokeColor="#555555" />
+
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Tap a tag name to rename it. Color badges show which slots it occupies."
+            android:textColor="#666666"
+            android:textSize="12sp"
+            android:layout_marginBottom="10dp" />
+
+        <LinearLayout
+            android:id="@+id/tagLibraryContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#1E1E1E"
+            android:padding="8dp" />
+
+    </LinearLayout>
+
+</ScrollView>

@@ -116,13 +116,15 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    /** Rebuilds the legend rows from current label preferences. Call from onResume. */
+    /** Rebuilds the legend rows from current slot assignments. Call from onResume. */
     private fun populateLegend() {
-        val dp     = resources.displayMetrics.density
-        val labels = TagPreferences.getLabels(this)
+        val dp = resources.displayMetrics.density
         binding.legendItems.removeAllViews()
 
-        labels.forEachIndexed { slot, label ->
+        for (slot in 0 until 6) {
+            val label = TagLibrary.getLabelForSlot(this, slot)
+            if (label.isEmpty()) continue
+
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity     = Gravity.CENTER_VERTICAL
@@ -137,7 +139,7 @@ class MapActivity : AppCompatActivity() {
                 }
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setColor(TagPreferences.slotColor(slot))
+                    setColor(TagLibrary.slotColor(slot))
                 }
             }
 
@@ -154,7 +156,7 @@ class MapActivity : AppCompatActivity() {
     }
 
     /** Returns the display color for a location, using slot index when available. */
-    private fun markerColor(slot: Int): Int = TagPreferences.slotColor(slot)
+    private fun markerColor(slot: Int): Int = TagLibrary.slotColor(slot)
 
     /** Creates a filled circle marker icon in the given color. */
     private fun createCircleMarker(color: Int): Drawable {

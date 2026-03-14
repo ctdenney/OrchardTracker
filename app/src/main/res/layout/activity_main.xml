@@ -108,9 +108,11 @@
             android:layout_rowWeight="1"
             android:layout_margin="6dp"
             android:text="START"
-            android:textSize="28sp"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="@android:color/white"
+            android:textAllCaps="false"
+            android:maxLines="2"
             app:backgroundTint="@color/tag_start"
             xmlns:app="http://schemas.android.com/apk/res-auto" />
 
@@ -122,9 +124,11 @@
             android:layout_rowWeight="1"
             android:layout_margin="6dp"
             android:text="END"
-            android:textSize="28sp"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="@android:color/white"
+            android:textAllCaps="false"
+            android:maxLines="2"
             app:backgroundTint="@color/tag_end"
             xmlns:app="http://schemas.android.com/apk/res-auto" />
 
@@ -137,9 +141,11 @@
             android:layout_rowWeight="1"
             android:layout_margin="6dp"
             android:text="OBSTACLE"
-            android:textSize="22sp"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="@android:color/white"
+            android:textAllCaps="false"
+            android:maxLines="2"
             app:backgroundTint="@color/tag_obstacle"
             xmlns:app="http://schemas.android.com/apk/res-auto" />
 
@@ -151,9 +157,11 @@
             android:layout_rowWeight="1"
             android:layout_margin="6dp"
             android:text="WAYPOINT"
-            android:textSize="22sp"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="@android:color/white"
+            android:textAllCaps="false"
+            android:maxLines="2"
             app:backgroundTint="@color/tag_waypoint"
             xmlns:app="http://schemas.android.com/apk/res-auto" />
 
@@ -166,9 +174,11 @@
             android:layout_rowWeight="1"
             android:layout_margin="6dp"
             android:text="SAMPLE"
-            android:textSize="26sp"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="@android:color/white"
+            android:textAllCaps="false"
+            android:maxLines="2"
             app:backgroundTint="@color/tag_sample"
             xmlns:app="http://schemas.android.com/apk/res-auto" />
 
@@ -180,9 +190,11 @@
             android:layout_rowWeight="1"
             android:layout_margin="6dp"
             android:text="MARK"
-            android:textSize="28sp"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="#111111"
+            android:textAllCaps="false"
+            android:maxLines="2"
             app:backgroundTint="@color/tag_mark"
             xmlns:app="http://schemas.android.com/apk/res-auto" />
 

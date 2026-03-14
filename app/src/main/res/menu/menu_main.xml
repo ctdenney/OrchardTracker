@@ -3,8 +3,8 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:id="@+id/action_edit_labels"
-        android:title="Edit Labels"
+        android:id="@+id/action_manage_buttons"
+        android:title="Manage Buttons"
         app:showAsAction="never" />
 
 </menu>
