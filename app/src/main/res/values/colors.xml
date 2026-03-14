@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App theme -->
+    <color name="colorPrimary">#1565C0</color>
+    <color name="colorPrimaryVariant">#003c8f</color>
+    <color name="colorOnPrimary">#FFFFFF</color>
+    <color name="colorSurface">#1E1E1E</color>
+
+    <!-- GPS accuracy indicator -->
+    <color name="gps_excellent">#4CAF50</color>  <!-- ≤5 m  -->
+    <color name="gps_good">#FFC107</color>        <!-- ≤15 m -->
+    <color name="gps_poor">#F44336</color>        <!-- >15 m  -->
+
+    <!-- Tag button backgrounds -->
+    <color name="tag_start">#2E7D32</color>    <!-- dark green  -->
+    <color name="tag_end">#C62828</color>      <!-- dark red    -->
+    <color name="tag_obstacle">#E65100</color> <!-- deep orange -->
+    <color name="tag_waypoint">#1565C0</color> <!-- dark blue   -->
+    <color name="tag_sample">#6A1B9A</color>   <!-- deep purple -->
+    <color name="tag_mark">#F9A825</color>     <!-- amber       -->
+</resources>
