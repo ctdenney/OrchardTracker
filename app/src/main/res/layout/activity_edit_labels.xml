@@ -39,7 +39,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="Default: Start"
+                android:hint="Default: Gopher"
                 app:boxStrokeColor="@color/tag_start">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -74,7 +74,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="Default: End"
+                android:hint="Default: Blight"
                 app:boxStrokeColor="@color/tag_end">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -109,7 +109,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="Default: Obstacle"
+                android:hint="Default: Blackberry"
                 app:boxStrokeColor="@color/tag_obstacle">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -144,7 +144,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="Default: Waypoint"
+                android:hint="Default: Broken Irrigation"
                 app:boxStrokeColor="@color/tag_waypoint">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -179,7 +179,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="Default: Sample"
+                android:hint="Default: Prune"
                 app:boxStrokeColor="@color/tag_sample">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -214,7 +214,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="Default: Mark"
+                android:hint="Default: End Tank"
                 app:boxStrokeColor="@color/tag_mark">
 
                 <com.google.android.material.textfield.TextInputEditText

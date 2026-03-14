@@ -12,7 +12,7 @@ object TagPreferences {
     private const val PREFS_NAME = "tag_labels"
 
     /** Built-in names used as fallback / hint text. */
-    val DEFAULTS = listOf("Start", "End", "Obstacle", "Waypoint", "Sample", "Mark")
+    val DEFAULTS = listOf("Gopher", "Blight", "Blackberry", "Broken Irrigation", "Prune", "End Tank")
 
     /** Fetch all six labels, substituting defaults where the user has not set a custom name. */
     fun getLabels(context: Context): List<String> {
