@@ -31,7 +31,7 @@ All labels can be renamed via **⋮ → Edit Labels** from the main screen.
 
 ## Download
 
-**[Download the latest APK (v1.0.0)](https://github.com/ctdenney/OrchardTracker/releases/download/v1.0.0/app-debug.apk)**
+**[Download the latest APK (v1.0.0)](https://github.com/ctdenney/OrchardTracker/releases/download/v1.0.0/app-release.apk)**
 
 On your Android device, open the downloaded file and follow the prompts. If prompted, enable *Install from unknown sources* in Settings → Security.
 
