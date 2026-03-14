@@ -28,6 +28,37 @@
             android:textColor="#AAAAAA"
             android:textSize="13sp" />
 
+        <!-- Tile source selector -->
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/toggleTileSource"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            app:singleSelection="true"
+            app:selectionRequired="true">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnTileOsm"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:text="Street Map (OSM)"
+                android:textSize="13sp"
+                app:strokeColor="#555555" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnTileEsri"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:text="Satellite (ESRI)"
+                android:textSize="13sp"
+                app:strokeColor="#555555" />
+
+        </com.google.android.material.button.MaterialButtonToggleGroup>
+
         <!-- Zoom range row -->
         <LinearLayout
             android:layout_width="match_parent"

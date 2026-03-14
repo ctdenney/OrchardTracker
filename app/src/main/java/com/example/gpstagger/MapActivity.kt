@@ -23,7 +23,6 @@ import com.example.gpstagger.data.LocationDatabase
 import com.example.gpstagger.databinding.ActivityMapBinding
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.overlay.Marker
 
@@ -59,10 +58,16 @@ class MapActivity : AppCompatActivity() {
 
     private fun setupMap() {
         binding.mapView.apply {
-            setTileSource(TileSourceFactory.MAPNIK)
+            setTileSource(TileSources.saved(this@MapActivity))
             setMultiTouchControls(true)
             controller.setZoom(3.0)
         }
+    }
+
+    private fun applyTileSource() {
+        binding.mapView.setTileSource(TileSources.saved(this))
+        binding.mapView.invalidate()
+        invalidateOptionsMenu()
     }
 
     private fun loadLocations() {
@@ -215,9 +220,21 @@ class MapActivity : AppCompatActivity() {
         return true
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        val esri = TileSources.isEsriSelected(this)
+        menu.findItem(R.id.action_toggle_satellite)?.title =
+            if (esri) "Switch to Street Map" else "Switch to Satellite"
+        return super.onPrepareOptionsMenu(menu)
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             android.R.id.home -> { finish(); true }
+            R.id.action_toggle_satellite -> {
+                TileSources.saveSelection(this, !TileSources.isEsriSelected(this))
+                applyTileSource()
+                true
+            }
             R.id.action_download_offline -> {
                 val center = binding.mapView.mapCenter
                 startActivity(
@@ -234,6 +251,11 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    override fun onResume() { super.onResume(); binding.mapView.onResume(); populateLegend() }
+    override fun onResume() {
+        super.onResume()
+        binding.mapView.onResume()
+        applyTileSource()
+        populateLegend()
+    }
     override fun onPause()  { super.onPause();  binding.mapView.onPause()  }
 }

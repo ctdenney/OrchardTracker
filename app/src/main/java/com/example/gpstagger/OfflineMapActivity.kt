@@ -19,7 +19,6 @@ import org.osmdroid.events.MapListener
 import org.osmdroid.events.ScrollEvent
 import org.osmdroid.events.ZoomEvent
 import org.osmdroid.tileprovider.cachemanager.CacheManager
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import java.io.File
 
@@ -69,7 +68,7 @@ class OfflineMapActivity : AppCompatActivity() {
         val zoom = intent.getDoubleExtra(EXTRA_ZOOM, 14.0)
 
         binding.mapView.apply {
-            setTileSource(TileSourceFactory.MAPNIK)
+            setTileSource(TileSources.saved(this@OfflineMapActivity))
             setMultiTouchControls(true)
             controller.setZoom(zoom)
             if (lat != 0.0 || lon != 0.0) controller.setCenter(GeoPoint(lat, lon))
@@ -81,6 +80,25 @@ class OfflineMapActivity : AppCompatActivity() {
         }
 
         cacheManager = CacheManager(binding.mapView)
+
+        // Keep the toggle button state in sync with the saved preference
+        if (TileSources.isEsriSelected(this)) {
+            binding.toggleTileSource.check(R.id.btnTileEsri)
+        } else {
+            binding.toggleTileSource.check(R.id.btnTileOsm)
+        }
+
+        binding.toggleTileSource.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            val esri = checkedId == R.id.btnTileEsri
+            TileSources.saveSelection(this, esri)
+            binding.mapView.setTileSource(if (esri) TileSources.ESRI_SATELLITE else TileSources.OSM)
+            binding.mapView.invalidate()
+            // Recreate CacheManager so it targets the newly selected tile source
+            cacheManager = CacheManager(binding.mapView)
+            scheduleEstimate()
+        }
+
         scheduleEstimate()
     }
 
