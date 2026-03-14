@@ -6,12 +6,12 @@ An Android app for tagging GPS coordinates in the field. Designed for use on a t
 
 - **One-tap GPS tagging** — six large buttons each save your current location with a label
 - **Live GPS status** — color-coded accuracy indicator (green ≤ 5 m, amber ≤ 15 m, red > 15 m)
-- **Map view** — all saved points displayed on an OpenStreetMap map with a color-coded legend
+- **Map view** — all saved points displayed on a map with a color-coded legend; switch between street map (OpenStreetMap) and satellite imagery (ESRI World Imagery) via the overflow menu
 - **Custom labels** — rename any button to suit your operation (changes persist across sessions)
 - **CSV export** — share your tagged points via email, Drive, or any other app
 - **Screen stays on** — display never sleeps while the app is open
 - **Haptic feedback** — short vibration confirms every saved point without looking at the screen
-- **Offline map tiles** — download map tiles for any area so the map works without cell service
+- **Offline map tiles** — download street map or satellite tiles for any area so the map works without cell service
 - **No account or API key required**
 
 ### Default button labels
@@ -103,7 +103,7 @@ On your Android device, open the downloaded file and follow the prompts. If prom
 |---|---|
 | `ACCESS_FINE_LOCATION` | Records precise GPS coordinates when a button is pressed |
 | `ACCESS_COARSE_LOCATION` | Fallback if fine location is unavailable |
-| `INTERNET` | Downloads map tiles from OpenStreetMap |
+| `INTERNET` | Downloads map tiles from OpenStreetMap / ESRI |
 | `VIBRATE` | Haptic confirmation when a point is saved |
 
 ---
@@ -120,6 +120,7 @@ On your Android device, open the downloaded file and follow the prompts. If prom
 - The map centers on all your recorded points
 - Tap any marker to see its label, timestamp, and accuracy
 - Use the **Legend** overlay (bottom-left of the map) to see which color is which label
+- Tap **⋮ → Switch to Satellite** to view ESRI World Imagery instead of the street map (tap again to switch back)
 
 ### Renaming buttons
 1. Tap **⋮** (top-right overflow menu) → **Edit Labels**
@@ -128,12 +129,13 @@ On your Android device, open the downloaded file and follow the prompts. If prom
 
 ### Downloading offline map tiles
 1. Tap **View Map** → **⋮ → Download Offline Map**
-2. Pan and zoom the map to the area you want to cache
-3. Adjust the **Zoom** range (8 = regional overview, 13 = individual fields, 18 = row-level detail)
-4. Check the tile / size estimate, then tap **Download Area**
-5. A progress bar tracks the download — the app can be used normally once it finishes
+2. Select the tile source — **Street Map (OSM)** or **Satellite (ESRI)**
+3. Pan and zoom the map to the area you want to cache
+4. Adjust the **Zoom** range (8 = regional overview, 13 = individual fields, 18 = row-level detail)
+5. Check the tile / size estimate, then tap **Download Area**
+6. A progress bar tracks the download — the app can be used normally once it finishes
 
-> **Tip:** Zoom levels 13–17 cover most orchard work and typically download in under a minute on a good connection. Wider zoom ranges increase download size exponentially.
+> **Tip:** Zoom levels 13–17 cover most orchard work and typically download in under a minute on a good connection. Wider zoom ranges increase download size exponentially. Download both tile sources separately if you want to switch between them offline.
 
 To free up storage, tap **Clear Cache** on the same screen.
 
@@ -157,7 +159,7 @@ id,tag,latitude,longitude,altitude_m,accuracy_m,timestamp
 | UI | Material Components for Android |
 | Database | Room (SQLite) |
 | Location | Google Play Services — FusedLocationProviderClient |
-| Maps | OSMDroid (OpenStreetMap, no API key) |
+| Maps | OSMDroid — OpenStreetMap street tiles + ESRI World Imagery satellite tiles (no API key) |
 | Async | Kotlin Coroutines |
 
 ---
