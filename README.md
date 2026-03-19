@@ -7,6 +7,9 @@ An Android app for tagging GPS coordinates in the field. Designed for use on a t
 - **One-tap GPS tagging** — six large buttons each save your current location with a label
 - **Live GPS status** — color-coded accuracy indicator (green ≤ 5 m, amber ≤ 15 m, red > 15 m)
 - **Map view** — all saved points displayed on a map with a color-coded legend; switch between street map (OpenStreetMap) and satellite imagery (ESRI World Imagery) via the overflow menu
+- **My Location** — tap the location button on the map to center on your current GPS position
+- **Delete points** — tap any marker to delete it individually, or use "Select Area" to drag a rectangle and delete all points within it
+- **Filter by tag** — use "Filter Tags" in the map menu to show only selected tag types
 - **Custom labels** — rename any button to suit your operation (changes persist across sessions)
 - **CSV export** — share your tagged points via email, Drive, or any other app
 - **Screen stays on** — display never sleeps while the app is open
@@ -31,7 +34,7 @@ All labels can be renamed via **⋮ → Edit Labels** from the main screen.
 
 ## Download
 
-**[Download the latest APK (v1.0.0)](https://github.com/ctdenney/OrchardTracker/releases/download/v1.0.0/app-release-signed.apk)**
+**[Download the latest APK (v1.1.0)](https://github.com/ctdenney/OrchardTracker/releases/download/v1.1.0/app-release-signed.apk)**
 
 On your Android device, open the downloaded file and follow the prompts. If prompted, enable *Install from unknown sources* in Settings → Security.
 
@@ -118,9 +121,17 @@ On your Android device, open the downloaded file and follow the prompts. If prom
 ### Viewing saved points
 - Tap **View Map** at the bottom of the main screen
 - The map centers on all your recorded points
-- Tap any marker to see its label, timestamp, and accuracy
+- Tap any marker to see its label, timestamp, and accuracy — tap **Delete** in that dialog to remove it
 - Use the **Legend** overlay (bottom-left of the map) to see which color is which label
+- Tap the **location button** (bottom-right of the map) to center on your current GPS position
 - Tap **⋮ → Switch to Satellite** to view ESRI World Imagery instead of the street map (tap again to switch back)
+- Tap **⋮ → Filter Tags** to show only selected tag types on the map
+
+### Deleting points by area
+1. Tap **Select Area** in the bottom bar — the button turns orange
+2. Drag a rectangle over the map to select the points you want to remove
+3. Confirm the deletion in the dialog that appears
+4. Tap **Cancel** at any time to exit selection mode without deleting
 
 ### Renaming buttons
 1. Tap **⋮** (top-right overflow menu) → **Edit Labels**
