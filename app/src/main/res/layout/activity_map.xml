@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <!-- Map fills remaining height; "no points" overlay sits on top -->
+    <!-- Map fills remaining height; overlays sit on top -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -40,7 +40,6 @@
             android:orientation="vertical"
             android:padding="10dp">
 
-            <!-- Header row: tapping anywhere here toggles the item list -->
             <LinearLayout
                 android:id="@+id/legendHeader"
                 android:layout_width="match_parent"
@@ -60,7 +59,6 @@
                     android:textStyle="bold"
                     android:letterSpacing="0.12" />
 
-                <!-- Arrow indicator, rotated in code on toggle -->
                 <TextView
                     android:id="@+id/tvLegendArrow"
                     android:layout_width="wrap_content"
@@ -72,7 +70,6 @@
 
             </LinearLayout>
 
-            <!-- Populated programmatically from TagPreferences -->
             <LinearLayout
                 android:id="@+id/legendItems"
                 android:layout_width="wrap_content"
@@ -81,6 +78,19 @@
                 android:layout_marginTop="6dp" />
 
         </LinearLayout>
+
+        <!-- ── My Location FAB ───────────────────────────────────────── -->
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fabMyLocation"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="16dp"
+            android:contentDescription="My Location"
+            android:src="@android:drawable/ic_menu_mylocation"
+            app:backgroundTint="#1E1E1E"
+            app:tint="@android:color/white"
+            app:fabSize="normal" />
 
     </FrameLayout>
 
@@ -95,20 +105,31 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnExport"
             android:layout_width="0dp"
-            android:layout_height="56dp"
+            android:layout_height="52dp"
             android:layout_weight="1"
             android:text="Export CSV"
-            android:textSize="15sp"
-            android:layout_marginEnd="4dp" />
+            android:textSize="13sp"
+            android:layout_marginEnd="3dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSelectArea"
+            android:layout_width="0dp"
+            android:layout_height="52dp"
+            android:layout_weight="1"
+            android:text="Select Area"
+            android:textSize="13sp"
+            android:layout_marginStart="3dp"
+            android:layout_marginEnd="3dp"
+            app:backgroundTint="#37474F" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnClearAll"
             android:layout_width="0dp"
-            android:layout_height="56dp"
+            android:layout_height="52dp"
             android:layout_weight="1"
             android:text="Clear All"
-            android:textSize="15sp"
-            android:layout_marginStart="4dp"
+            android:textSize="13sp"
+            android:layout_marginStart="3dp"
             app:backgroundTint="#C62828" />
 
     </LinearLayout>

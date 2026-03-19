@@ -20,6 +20,12 @@ interface LocationDao {
     @Query("DELETE FROM tagged_locations")
     suspend fun deleteAll()
 
+    @Query("DELETE FROM tagged_locations WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM tagged_locations WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
+
     @Query("SELECT COUNT(*) FROM tagged_locations")
     fun getCount(): LiveData<Int>
 }

@@ -1,6 +1,7 @@
 package com.example.gpstagger
 
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -20,16 +21,32 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.gpstagger.data.LocationDatabase
+import com.example.gpstagger.data.TaggedLocation
 import com.example.gpstagger.databinding.ActivityMapBinding
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
 class MapActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMapBinding
     private lateinit var db: LocationDatabase
+    private lateinit var myLocationOverlay: MyLocationNewOverlay
+    private lateinit var areaSelectionOverlay: AreaSelectionOverlay
+
+    /** Full unfiltered list from the database. */
+    private var allLocations: List<TaggedLocation> = emptyList()
+
+    /** Slots to show; empty set means "show all". */
+    private var activeSlotFilter: Set<Int> = emptySet()
+
+    /** Tracks which TaggedLocation each live marker represents. */
+    private val markerLocationMap = mutableMapOf<Marker, TaggedLocation>()
+
+    private var inSelectionMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,6 +71,10 @@ class MapActivity : AppCompatActivity() {
 
         binding.btnExport.setOnClickListener { exportCsv() }
         binding.btnClearAll.setOnClickListener { confirmClearAll() }
+        binding.btnSelectArea.setOnClickListener {
+            if (inSelectionMode) exitSelectionMode() else enterSelectionMode()
+        }
+        binding.fabMyLocation.setOnClickListener { centerOnMyLocation() }
     }
 
     private fun setupMap() {
@@ -62,6 +83,34 @@ class MapActivity : AppCompatActivity() {
             setMultiTouchControls(true)
             controller.setZoom(3.0)
         }
+
+        myLocationOverlay = MyLocationNewOverlay(
+            GpsMyLocationProvider(this), binding.mapView
+        )
+        myLocationOverlay.enableMyLocation()
+
+        areaSelectionOverlay = AreaSelectionOverlay(binding.mapView) { bbox ->
+            val inArea = allLocations.filter { loc ->
+                bbox.contains(loc.latitude, loc.longitude)
+            }
+            exitSelectionMode()
+            if (inArea.isEmpty()) {
+                Toast.makeText(this, "No points in selected area", Toast.LENGTH_SHORT).show()
+                return@AreaSelectionOverlay
+            }
+            val count = inArea.size
+            AlertDialog.Builder(this)
+                .setTitle("Delete $count point${if (count != 1) "s" else ""}?")
+                .setMessage("Permanently delete $count selected point${if (count != 1) "s" else ""}? This cannot be undone.")
+                .setPositiveButton("Delete") { _, _ ->
+                    lifecycleScope.launch { db.locationDao().deleteByIds(inArea.map { it.id }) }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        binding.mapView.overlays.add(myLocationOverlay)
+        binding.mapView.overlays.add(areaSelectionOverlay)
     }
 
     private fun applyTileSource() {
@@ -70,39 +119,143 @@ class MapActivity : AppCompatActivity() {
         invalidateOptionsMenu()
     }
 
+    // ── Location loading & marker rendering ───────────────────────────────────
+
     private fun loadLocations() {
         db.locationDao().getAllLocations().observe(this) { locations ->
-            binding.mapView.overlays.clear()
+            allLocations = locations
 
             if (locations.isEmpty()) {
                 binding.tvNoPoints.visibility = View.VISIBLE
-                binding.mapView.invalidate()
+                refreshMarkers()
                 return@observe
             }
             binding.tvNoPoints.visibility = View.GONE
+            refreshMarkers()
 
-            var sumLat = 0.0
-            var sumLon = 0.0
-
-            locations.forEach { loc ->
-                val marker = Marker(binding.mapView).apply {
-                    position = GeoPoint(loc.latitude, loc.longitude)
-                    title    = "${loc.tag}  —  ${loc.formattedTime()}"
-                    snippet  = "Lat: ${loc.latitude}\nLon: ${loc.longitude}\nAccuracy: ±${loc.accuracy.toInt()} m"
-                    icon     = createCircleMarker(markerColor(loc.slot))
-                }
-                binding.mapView.overlays.add(marker)
-                sumLat += loc.latitude
-                sumLon += loc.longitude
-            }
-
-            val centerLat = sumLat / locations.size
-            val centerLon = sumLon / locations.size
+            // Auto-center on the centroid of all points
+            val centerLat = locations.sumOf { it.latitude } / locations.size
+            val centerLon = locations.sumOf { it.longitude } / locations.size
             binding.mapView.controller.apply {
                 setZoom(15.0)
                 animateTo(GeoPoint(centerLat, centerLon))
             }
-            binding.mapView.invalidate()
+        }
+    }
+
+    /** Rebuilds map markers from [allLocations], applying [activeSlotFilter]. */
+    private fun refreshMarkers() {
+        markerLocationMap.clear()
+        binding.mapView.overlays.clear()
+        binding.mapView.overlays.add(myLocationOverlay)
+        binding.mapView.overlays.add(areaSelectionOverlay)
+
+        val filtered = if (activeSlotFilter.isEmpty()) allLocations
+                       else allLocations.filter { it.slot in activeSlotFilter }
+
+        filtered.forEach { loc ->
+            val marker = Marker(binding.mapView).apply {
+                position = GeoPoint(loc.latitude, loc.longitude)
+                title    = "${loc.tag}  —  ${loc.formattedTime()}"
+                snippet  = "Lat: ${loc.latitude}\nLon: ${loc.longitude}\nAccuracy: ±${loc.accuracy.toInt()} m"
+                icon     = createCircleMarker(markerColor(loc.slot))
+                setOnMarkerClickListener { m, _ ->
+                    showPointDeleteDialog(markerLocationMap[m] ?: return@setOnMarkerClickListener true)
+                    true
+                }
+            }
+            markerLocationMap[marker] = loc
+            binding.mapView.overlays.add(marker)
+        }
+
+        binding.mapView.invalidate()
+    }
+
+    // ── Individual point deletion ─────────────────────────────────────────────
+
+    private fun showPointDeleteDialog(loc: TaggedLocation) {
+        AlertDialog.Builder(this)
+            .setTitle(loc.tag)
+            .setMessage(
+                "${loc.formattedTime()}\n" +
+                "Lat: ${loc.latitude}\nLon: ${loc.longitude}\n" +
+                "Accuracy: ±${loc.accuracy.toInt()} m"
+            )
+            .setPositiveButton("Delete") { _, _ ->
+                lifecycleScope.launch { db.locationDao().deleteById(loc.id) }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    // ── Area selection mode ───────────────────────────────────────────────────
+
+    private fun enterSelectionMode() {
+        inSelectionMode = true
+        areaSelectionOverlay.isActive = true
+        binding.mapView.setMultiTouchControls(false)
+        binding.btnSelectArea.apply {
+            text = "Cancel"
+            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
+        }
+        Toast.makeText(this, "Drag to draw a selection rectangle", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun exitSelectionMode() {
+        inSelectionMode = false
+        areaSelectionOverlay.isActive = false
+        binding.mapView.setMultiTouchControls(true)
+        binding.btnSelectArea.apply {
+            text = "Select Area"
+            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#37474F"))
+        }
+    }
+
+    // ── Tag filter ────────────────────────────────────────────────────────────
+
+    private fun showFilterDialog() {
+        val presentSlots = allLocations.map { it.slot }.distinct().sorted()
+        if (presentSlots.isEmpty()) {
+            Toast.makeText(this, "No points to filter", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val labels = presentSlots.map { slot ->
+            TagLibrary.getLabelForSlot(this, slot).ifEmpty { "Slot $slot" }
+        }.toTypedArray()
+
+        val checked = BooleanArray(presentSlots.size) { i ->
+            activeSlotFilter.isEmpty() || presentSlots[i] in activeSlotFilter
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Filter by Tag")
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
+                checked[which] = isChecked
+            }
+            .setPositiveButton("Apply") { _, _ ->
+                val selected = presentSlots.filterIndexed { i, _ -> checked[i] }.toSet()
+                activeSlotFilter = if (selected.size == presentSlots.size) emptySet() else selected
+                refreshMarkers()
+                invalidateOptionsMenu()
+            }
+            .setNeutralButton("Show All") { _, _ ->
+                activeSlotFilter = emptySet()
+                refreshMarkers()
+                invalidateOptionsMenu()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    // ── My Location ───────────────────────────────────────────────────────────
+
+    private fun centerOnMyLocation() {
+        val myLoc = myLocationOverlay.myLocation
+        if (myLoc != null) {
+            binding.mapView.controller.animateTo(myLoc)
+        } else {
+            Toast.makeText(this, "Waiting for GPS fix…", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -116,7 +269,6 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    /** Rebuilds the legend rows from current slot assignments. Call from onResume. */
     private fun populateLegend() {
         val dp = resources.displayMetrics.density
         binding.legendItems.removeAllViews()
@@ -131,7 +283,6 @@ class MapActivity : AppCompatActivity() {
                 setPadding(0, (3 * dp).toInt(), 0, (3 * dp).toInt())
             }
 
-            // Colored circle dot
             val dotSize = (12 * dp).toInt()
             val dot = View(this).apply {
                 layoutParams = LinearLayout.LayoutParams(dotSize, dotSize).also {
@@ -155,10 +306,10 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    /** Returns the display color for a location, using slot index when available. */
+    // ── Marker helpers ────────────────────────────────────────────────────────
+
     private fun markerColor(slot: Int): Int = TagLibrary.slotColor(slot)
 
-    /** Creates a filled circle marker icon in the given color. */
     private fun createCircleMarker(color: Int): Drawable {
         val dp = resources.displayMetrics.density
         val size = (36 * dp).toInt()
@@ -166,11 +317,9 @@ class MapActivity : AppCompatActivity() {
         val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // Filled circle
         paint.color = color
         canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
 
-        // White border
         paint.color = Color.WHITE
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 3 * dp
@@ -178,6 +327,8 @@ class MapActivity : AppCompatActivity() {
 
         return BitmapDrawable(resources, bitmap)
     }
+
+    // ── Export ────────────────────────────────────────────────────────────────
 
     private fun exportCsv() {
         lifecycleScope.launch {
@@ -206,6 +357,8 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    // ── Delete all ────────────────────────────────────────────────────────────
+
     private fun confirmClearAll() {
         AlertDialog.Builder(this)
             .setTitle("Clear All Points?")
@@ -217,6 +370,8 @@ class MapActivity : AppCompatActivity() {
             .show()
     }
 
+    // ── Options menu ──────────────────────────────────────────────────────────
+
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_map, menu)
         return true
@@ -226,12 +381,15 @@ class MapActivity : AppCompatActivity() {
         val esri = TileSources.isEsriSelected(this)
         menu.findItem(R.id.action_toggle_satellite)?.title =
             if (esri) "Switch to Street Map" else "Switch to Satellite"
+        menu.findItem(R.id.action_filter_tags)?.title =
+            if (activeSlotFilter.isEmpty()) "Filter Tags" else "Filter Tags ✓"
         return super.onPrepareOptionsMenu(menu)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             android.R.id.home -> { finish(); true }
+            R.id.action_filter_tags -> { showFilterDialog(); true }
             R.id.action_toggle_satellite -> {
                 TileSources.saveSelection(this, !TileSources.isEsriSelected(this))
                 applyTileSource()
@@ -253,11 +411,19 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
     override fun onResume() {
         super.onResume()
         binding.mapView.onResume()
+        myLocationOverlay.enableMyLocation()
         applyTileSource()
         populateLegend()
     }
-    override fun onPause()  { super.onPause();  binding.mapView.onPause()  }
+
+    override fun onPause() {
+        super.onPause()
+        binding.mapView.onPause()
+        myLocationOverlay.disableMyLocation()
+    }
 }
