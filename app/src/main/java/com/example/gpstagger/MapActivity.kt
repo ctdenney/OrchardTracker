@@ -237,11 +237,13 @@ class MapActivity : AppCompatActivity() {
                 val selected = presentSlots.filterIndexed { i, _ -> checked[i] }.toSet()
                 activeSlotFilter = if (selected.size == presentSlots.size) emptySet() else selected
                 refreshMarkers()
+                populateLegend()
                 invalidateOptionsMenu()
             }
             .setNeutralButton("Show All") { _, _ ->
                 activeSlotFilter = emptySet()
                 refreshMarkers()
+                populateLegend()
                 invalidateOptionsMenu()
             }
             .setNegativeButton("Cancel", null)
@@ -274,6 +276,7 @@ class MapActivity : AppCompatActivity() {
         binding.legendItems.removeAllViews()
 
         for (slot in 0 until 6) {
+            if (activeSlotFilter.isNotEmpty() && slot !in activeSlotFilter) continue
             val label = TagLibrary.getLabelForSlot(this, slot)
             if (label.isEmpty()) continue
 
@@ -312,7 +315,7 @@ class MapActivity : AppCompatActivity() {
 
     private fun createCircleMarker(color: Int): Drawable {
         val dp = resources.displayMetrics.density
-        val size = (36 * dp).toInt()
+        val size = (18 * dp).toInt()
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -322,7 +325,7 @@ class MapActivity : AppCompatActivity() {
 
         paint.color = Color.WHITE
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 3 * dp
+        paint.strokeWidth = 1.5f * dp
         canvas.drawCircle(size / 2f, size / 2f, (size / 2f) - paint.strokeWidth, paint)
 
         return BitmapDrawable(resources, bitmap)
