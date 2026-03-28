@@ -9,8 +9,9 @@ An Android app for tagging GPS coordinates in the field. Designed for use on a t
 - **Map view** — all saved points displayed on a map with a color-coded legend; switch between street map (OpenStreetMap) and satellite imagery (ESRI World Imagery) via the overflow menu
 - **My Location** — tap the location button on the map to center on your current GPS position
 - **Delete points** — tap any marker to delete it individually, or use "Select Area" to drag a rectangle and delete all points within it
-- **Filter by tag** — use "Filter Tags" in the map menu to show only selected tag types
+- **Filter by tag** — use "Filter Tags" in the map menu to show only selected tag types; filters by tag name so reassigned slots don't cause collisions
 - **Custom labels** — rename any button to suit your operation (changes persist across sessions)
+- **In-app updates** — check for new versions from the overflow menu; downloads and installs directly
 - **CSV export** — share your tagged points via email, Drive, or any other app
 - **Screen stays on** — display never sleeps while the app is open
 - **Haptic feedback** — short vibration confirms every saved point without looking at the screen
