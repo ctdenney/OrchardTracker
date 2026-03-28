@@ -40,8 +40,8 @@ class MapActivity : AppCompatActivity() {
     /** Full unfiltered list from the database. */
     private var allLocations: List<TaggedLocation> = emptyList()
 
-    /** Slots to show; empty set means "show all". */
-    private var activeSlotFilter: Set<Int> = emptySet()
+    /** Tag names to show; empty set means "show all". */
+    private var activeTagFilter: Set<String> = emptySet()
 
     /** Tracks which TaggedLocation each live marker represents. */
     private val markerLocationMap = mutableMapOf<Marker, TaggedLocation>()
@@ -143,15 +143,15 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    /** Rebuilds map markers from [allLocations], applying [activeSlotFilter]. */
+    /** Rebuilds map markers from [allLocations], applying [activeTagFilter]. */
     private fun refreshMarkers() {
         markerLocationMap.clear()
         binding.mapView.overlays.clear()
         binding.mapView.overlays.add(myLocationOverlay)
         binding.mapView.overlays.add(areaSelectionOverlay)
 
-        val filtered = if (activeSlotFilter.isEmpty()) allLocations
-                       else allLocations.filter { it.slot in activeSlotFilter }
+        val filtered = if (activeTagFilter.isEmpty()) allLocations
+                       else allLocations.filter { it.tag in activeTagFilter }
 
         filtered.forEach { loc ->
             val marker = Marker(binding.mapView).apply {
@@ -214,18 +214,16 @@ class MapActivity : AppCompatActivity() {
     // ── Tag filter ────────────────────────────────────────────────────────────
 
     private fun showFilterDialog() {
-        val presentSlots = allLocations.map { it.slot }.distinct().sorted()
-        if (presentSlots.isEmpty()) {
+        val presentTags = allLocations.map { it.tag }.distinct().sorted()
+        if (presentTags.isEmpty()) {
             Toast.makeText(this, "No points to filter", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val labels = presentSlots.map { slot ->
-            TagLibrary.getLabelForSlot(this, slot).ifEmpty { "Slot $slot" }
-        }.toTypedArray()
+        val labels = presentTags.toTypedArray()
 
-        val checked = BooleanArray(presentSlots.size) { i ->
-            activeSlotFilter.isEmpty() || presentSlots[i] in activeSlotFilter
+        val checked = BooleanArray(presentTags.size) { i ->
+            activeTagFilter.isEmpty() || presentTags[i] in activeTagFilter
         }
 
         AlertDialog.Builder(this)
@@ -234,14 +232,14 @@ class MapActivity : AppCompatActivity() {
                 checked[which] = isChecked
             }
             .setPositiveButton("Apply") { _, _ ->
-                val selected = presentSlots.filterIndexed { i, _ -> checked[i] }.toSet()
-                activeSlotFilter = if (selected.size == presentSlots.size) emptySet() else selected
+                val selected = presentTags.filterIndexed { i, _ -> checked[i] }.toSet()
+                activeTagFilter = if (selected.size == presentTags.size) emptySet() else selected
                 refreshMarkers()
                 populateLegend()
                 invalidateOptionsMenu()
             }
             .setNeutralButton("Show All") { _, _ ->
-                activeSlotFilter = emptySet()
+                activeTagFilter = emptySet()
                 refreshMarkers()
                 populateLegend()
                 invalidateOptionsMenu()
@@ -275,10 +273,15 @@ class MapActivity : AppCompatActivity() {
         val dp = resources.displayMetrics.density
         binding.legendItems.removeAllViews()
 
-        for (slot in 0 until 6) {
-            if (activeSlotFilter.isNotEmpty() && slot !in activeSlotFilter) continue
-            val label = TagLibrary.getLabelForSlot(this, slot)
-            if (label.isEmpty()) continue
+        // Build legend from tags actually present in the data, keyed by tag name.
+        // Use the slot stored on each location to determine the color.
+        val tagSlotMap = allLocations
+            .groupBy { it.tag }
+            .mapValues { (_, locs) -> locs.first().slot }
+            .toSortedMap()
+
+        for ((tag, slot) in tagSlotMap) {
+            if (activeTagFilter.isNotEmpty() && tag !in activeTagFilter) continue
 
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -298,7 +301,7 @@ class MapActivity : AppCompatActivity() {
             }
 
             val text = TextView(this).apply {
-                text     = label
+                text     = tag
                 textSize = 13f
                 setTextColor(Color.WHITE)
             }
@@ -385,7 +388,7 @@ class MapActivity : AppCompatActivity() {
         menu.findItem(R.id.action_toggle_satellite)?.title =
             if (esri) "Switch to Street Map" else "Switch to Satellite"
         menu.findItem(R.id.action_filter_tags)?.title =
-            if (activeSlotFilter.isEmpty()) "Filter Tags" else "Filter Tags ✓"
+            if (activeTagFilter.isEmpty()) "Filter Tags" else "Filter Tags ✓"
         return super.onPrepareOptionsMenu(menu)
     }
 
