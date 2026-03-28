@@ -7,4 +7,9 @@
         android:title="Manage Buttons"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/action_check_update"
+        android:title="Check for Updates"
+        app:showAsAction="never" />
+
 </menu>

@@ -19,8 +19,8 @@ android {
         applicationId = "com.example.gpstagger"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
     buildFeatures {
@@ -78,4 +78,7 @@ dependencies {
 
     // OSMDroid map (no API key required)
     implementation("org.osmdroid:osmdroid-android:6.1.17")
+
+    // OkHttp (for update checker)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

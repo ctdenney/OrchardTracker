@@ -106,11 +106,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == R.id.action_manage_buttons) {
-            startActivity(Intent(this, ManageTagsActivity::class.java))
-            return true
+        when (item.itemId) {
+            R.id.action_manage_buttons -> {
+                startActivity(Intent(this, ManageTagsActivity::class.java))
+                return true
+            }
+            R.id.action_check_update -> {
+                checkForUpdate()
+                return true
+            }
         }
         return super.onOptionsItemSelected(item)
+    }
+
+    private fun checkForUpdate() {
+        Toast.makeText(this, "Checking for updates…", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val release = AppUpdater.checkForUpdate()
+            if (release == null) {
+                Toast.makeText(this@MainActivity, "Could not reach update server", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val localVersion = packageManager.getPackageInfo(packageName, 0).versionName ?: "0"
+            if (AppUpdater.isNewer(release.tagName, localVersion)) {
+                AppUpdater.promptAndInstall(this@MainActivity, release)
+            } else {
+                Toast.makeText(this@MainActivity, "You're on the latest version", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     // ── Location ──────────────────────────────────────────────────────────────

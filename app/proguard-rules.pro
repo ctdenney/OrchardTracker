@@ -8,3 +8,8 @@
 
 # Google Play Services Location
 -keep class com.google.android.gms.location.** { *; }
+
+# OkHttp
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keep class okhttp3.** { *; }
