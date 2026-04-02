@@ -111,12 +111,47 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this, ManageTagsActivity::class.java))
                 return true
             }
+            R.id.action_sync -> {
+                performSync()
+                return true
+            }
+            R.id.action_sync_settings -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
+                return true
+            }
             R.id.action_check_update -> {
                 checkForUpdate()
                 return true
             }
         }
         return super.onOptionsItemSelected(item)
+    }
+
+    private fun performSync() {
+        SyncConfig.load(this)
+        if (!SyncConfig.isConfigured()) {
+            Toast.makeText(this, "Configure sync server first (⋮ → Sync Settings)", Toast.LENGTH_LONG).show()
+            startActivity(Intent(this, SettingsActivity::class.java))
+            return
+        }
+        Toast.makeText(this, "Syncing…", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            when (val result = SyncManager.sync(this@MainActivity)) {
+                is SyncManager.Result.Success -> {
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity,
+                            "Sync complete: ${result.pushed} pushed, ${result.pulled} pulled",
+                            Toast.LENGTH_SHORT).show()
+                        applyLabels()
+                    }
+                }
+                is SyncManager.Result.Error -> {
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "Sync failed: ${result.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
     }
 
     private fun checkForUpdate() {

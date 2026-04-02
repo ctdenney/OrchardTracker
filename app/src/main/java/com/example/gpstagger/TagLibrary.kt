@@ -87,6 +87,20 @@ object TagLibrary {
         return tag
     }
 
+    /** Adds a tag with a specific ID (used during sync from server). */
+    fun addTagWithId(ctx: Context, id: String, name: String): Tag {
+        val tag = Tag(id, name.trim())
+        val tags = loadTags(ctx).toMutableList().also { it.add(tag) }
+        saveTags(ctx, tags)
+        // Ensure next_id stays ahead of any imported ID
+        val p = prefs(ctx)
+        val numId = id.toIntOrNull() ?: 0
+        if (numId >= p.getInt(KEY_NEXT_ID, 0)) {
+            p.edit().putInt(KEY_NEXT_ID, numId + 1).apply()
+        }
+        return tag
+    }
+
     fun renameTag(ctx: Context, id: String, newName: String) {
         saveTags(ctx, loadTags(ctx).map { if (it.id == id) it.copy(name = newName.trim()) else it })
     }
