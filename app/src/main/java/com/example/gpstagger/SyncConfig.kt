@@ -23,7 +23,11 @@ object SyncConfig {
     }
 
     fun save(ctx: Context, url: String, key: String) {
-        serverUrl = url.trimEnd('/')
+        var normalized = url.trim().trimEnd('/')
+        if (normalized.isNotEmpty() && !normalized.startsWith("http://") && !normalized.startsWith("https://")) {
+            normalized = "http://$normalized"
+        }
+        serverUrl = normalized
         apiKey = key
         prefs(ctx).edit()
             .putString(KEY_URL, serverUrl)

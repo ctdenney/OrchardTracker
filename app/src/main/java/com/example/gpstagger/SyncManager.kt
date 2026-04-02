@@ -52,13 +52,12 @@ object SyncManager {
             put("slots", slotsToJson(slots))
         }
 
-        val request = Request.Builder()
-            .url("${SyncConfig.serverUrl}/api/v1/sync")
-            .addHeader("X-API-Key", SyncConfig.apiKey)
-            .post(body.toString().toRequestBody(JSON_MEDIA))
-            .build()
-
         val response = try {
+            val request = Request.Builder()
+                .url("${SyncConfig.serverUrl}/api/v1/sync")
+                .addHeader("X-API-Key", SyncConfig.apiKey)
+                .post(body.toString().toRequestBody(JSON_MEDIA))
+                .build()
             client.newCall(request).execute()
         } catch (e: Exception) {
             return@withContext Result.Error("Network error: ${e.message}")
