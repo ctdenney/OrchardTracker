@@ -1,17 +1,15 @@
 package com.example.gpstagger
 
 import android.app.Activity
-import android.app.DownloadManager
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.net.Uri
-import android.os.Environment
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.appcompat.app.AppCompatActivity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -95,37 +93,35 @@ object AppUpdater {
     }
 
     private fun downloadAndInstall(activity: Activity, apkUrl: String) {
-        val updateDir = File(activity.externalCacheDir, "updates")
-        updateDir.mkdirs()
-        // Clean old downloads
-        updateDir.listFiles()?.forEach { it.delete() }
-
-        val destFile = File(updateDir, "update.apk")
-
         Toast.makeText(activity, "Downloading update…", Toast.LENGTH_SHORT).show()
 
-        val dm = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val request = DownloadManager.Request(Uri.parse(apkUrl))
-            .setTitle("Orchard Tracker Update")
-            .setDescription("Downloading new version")
-            .setDestinationUri(Uri.fromFile(destFile))
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+        (activity as AppCompatActivity).lifecycleScope.launch {
+            val destFile = withContext(Dispatchers.IO) {
+                try {
+                    val updateDir = File(activity.externalCacheDir, "updates")
+                    updateDir.mkdirs()
+                    updateDir.listFiles()?.forEach { it.delete() }
 
-        val downloadId = dm.enqueue(request)
+                    val request = Request.Builder().url(apkUrl).build()
+                    val response = client.newCall(request).execute()
+                    if (!response.isSuccessful) return@withContext null
 
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                if (id != downloadId) return
-                activity.unregisterReceiver(this)
+                    val file = File(updateDir, "update.apk")
+                    response.body?.byteStream()?.use { input ->
+                        file.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    file
+                } catch (_: Exception) {
+                    null
+                }
+            }
+
+            if (destFile != null && destFile.exists()) {
                 installApk(activity, destFile)
+            } else {
+                Toast.makeText(activity, "Download failed", Toast.LENGTH_SHORT).show()
             }
         }
-        activity.registerReceiver(
-            receiver,
-            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-            Context.RECEIVER_NOT_EXPORTED
-        )
     }
 
     private fun installApk(activity: Activity, file: File) {
