@@ -95,7 +95,7 @@ object AppUpdater {
     }
 
     private fun downloadAndInstall(activity: Activity, apkUrl: String) {
-        val updateDir = File(activity.cacheDir, "updates")
+        val updateDir = File(activity.externalCacheDir, "updates")
         updateDir.mkdirs()
         // Clean old downloads
         updateDir.listFiles()?.forEach { it.delete() }
