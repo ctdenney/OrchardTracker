@@ -3,6 +3,8 @@ package com.example.gpstagger
 import android.content.Context
 import com.example.gpstagger.data.LocationDatabase
 import com.example.gpstagger.data.TaggedLocation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -26,8 +28,8 @@ object SyncManager {
         data class Error(val message: String) : Result()
     }
 
-    suspend fun sync(ctx: Context): Result {
-        if (!SyncConfig.isConfigured()) return Result.Error("Server not configured")
+    suspend fun sync(ctx: Context): Result = withContext(Dispatchers.IO) {
+        if (!SyncConfig.isConfigured()) return@withContext Result.Error("Server not configured")
 
         val db = LocationDatabase.getDatabase(ctx)
         val dao = db.locationDao()
@@ -59,17 +61,17 @@ object SyncManager {
         val response = try {
             client.newCall(request).execute()
         } catch (e: Exception) {
-            return Result.Error("Network error: ${e.message}")
+            return@withContext Result.Error("Network error: ${e.message}")
         }
 
         if (!response.isSuccessful) {
-            return Result.Error("Server error: ${response.code}")
+            return@withContext Result.Error("Server error: ${response.code}")
         }
 
         val json = try {
             JSONObject(response.body?.string() ?: "{}")
         } catch (e: Exception) {
-            return Result.Error("Invalid response")
+            return@withContext Result.Error("Invalid response")
         }
 
         val serverTime = json.optLong("server_time", System.currentTimeMillis())
@@ -145,7 +147,7 @@ object SyncManager {
 
         SyncConfig.setLastSyncAt(ctx, serverTime)
 
-        return Result.Success(pushed = unsynced.size, pulled = pulled)
+        Result.Success(pushed = unsynced.size, pulled = pulled)
     }
 
     private fun locationsToJson(locations: List<TaggedLocation>): JSONArray {
