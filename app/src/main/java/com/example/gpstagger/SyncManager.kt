@@ -39,15 +39,35 @@ object SyncManager {
         // Gather unsynced locations
         val unsynced = dao.getUnsynced()
 
+        // Gather pending deletions (tombstones)
+        val pendingDeletions = dao.getPendingDeletions()
+
         // Gather tag library state
         val tags = TagLibrary.getAllTags(ctx)
         val slots = TagLibrary.getSlotAssignments(ctx)
 
-        // Build sync request
+        // Build sync request — include tombstones as deleted locations
+        val allLocations = locationsToJson(unsynced)
+        pendingDeletions.forEach { tombstone ->
+            allLocations.put(JSONObject().apply {
+                put("uuid", tombstone.uuid)
+                put("latitude", 0.0)
+                put("longitude", 0.0)
+                put("altitude", 0.0)
+                put("accuracy", 0.0)
+                put("tag", "")
+                put("slot", -1)
+                put("timestamp", tombstone.deletedAt)
+                put("created_at", tombstone.deletedAt)
+                put("updated_at", tombstone.deletedAt)
+                put("deleted", true)
+            })
+        }
+
         val body = JSONObject().apply {
             put("device_id", deviceId)
             put("last_sync_at", lastSync)
-            put("locations", locationsToJson(unsynced))
+            put("locations", allLocations)
             put("tags", tagsToJson(tags))
             put("slots", slotsToJson(slots))
         }
@@ -78,6 +98,11 @@ object SyncManager {
         // Mark pushed locations as synced
         if (unsynced.isNotEmpty()) {
             dao.markSynced(unsynced.map { it.uuid })
+        }
+
+        // Clear tombstones that were successfully pushed
+        if (pendingDeletions.isNotEmpty()) {
+            dao.clearTombstones(pendingDeletions.map { it.uuid })
         }
 
         // Apply incoming locations

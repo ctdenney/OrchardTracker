@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [TaggedLocation::class], version = 3, exportSchema = false)
+@Database(entities = [TaggedLocation::class, DeletedLocation::class], version = 4, exportSchema = false)
 abstract class LocationDatabase : RoomDatabase() {
 
     abstract fun locationDao(): LocationDao
@@ -44,6 +44,15 @@ abstract class LocationDatabase : RoomDatabase() {
             }
         }
 
+        /** v3 -> v4: adds deleted_locations tombstone table for sync. */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS deleted_locations (uuid TEXT NOT NULL PRIMARY KEY, deletedAt INTEGER NOT NULL)"
+                )
+            }
+        }
+
         fun getDatabase(context: Context): LocationDatabase =
             INSTANCE ?: synchronized(this) {
                 Room.databaseBuilder(
@@ -51,7 +60,7 @@ abstract class LocationDatabase : RoomDatabase() {
                     LocationDatabase::class.java,
                     "gps_tagger_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { INSTANCE = it }
             }
