@@ -55,6 +55,14 @@ class MapActivity : AppCompatActivity() {
     private var rowsVisible: Boolean = true
     private var lastRows: List<RowEntity> = emptyList()
 
+    /**
+     * Whether we've already done the one-time auto-centre on the saved
+     * point centroid. Without this guard, every DB change (e.g. deleting a
+     * point) re-fires the LiveData observer and snaps the viewport back to
+     * the centroid — clobbering whatever the user was looking at.
+     */
+    private var hasAutoCentered: Boolean = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().apply {
@@ -89,7 +97,23 @@ class MapActivity : AppCompatActivity() {
         binding.mapView.apply {
             setTileSource(TileSources.saved(this@MapActivity))
             setMultiTouchControls(true)
-            controller.setZoom(3.0)
+            // Allow the user to over-zoom past the tile source's native max;
+            // osmdroid's MapTileApproximater fills missing tiles by scaling
+            // their parents, so the view stays usable for placing or sighting
+            // points at higher detail than the imagery technically provides.
+            maxZoomLevel = TileSources.MAX_ZOOM.toDouble()
+            minZoomLevel = 2.0
+
+            // Restore the last viewport if we have one — otherwise start at
+            // a sensible "world" zoom and let loadLocations centre on points.
+            val saved = MapViewportPrefs.get(this@MapActivity)
+            if (saved != null) {
+                controller.setZoom(saved.zoom)
+                controller.setCenter(GeoPoint(saved.lat, saved.lng))
+                hasAutoCentered = true
+            } else {
+                controller.setZoom(3.0)
+            }
         }
 
         myLocationOverlay = MyLocationNewOverlay(
@@ -141,12 +165,17 @@ class MapActivity : AppCompatActivity() {
             binding.tvNoPoints.visibility = View.GONE
             refreshMarkers()
 
-            // Auto-center on the centroid of all points
-            val centerLat = locations.sumOf { it.latitude } / locations.size
-            val centerLon = locations.sumOf { it.longitude } / locations.size
-            binding.mapView.controller.apply {
-                setZoom(15.0)
-                animateTo(GeoPoint(centerLat, centerLon))
+            // Auto-centre once per activity-launch, only when we don't already
+            // have a saved viewport. Any subsequent DB change (delete, sync,
+            // tag rename) leaves the user's current pan/zoom alone.
+            if (!hasAutoCentered) {
+                hasAutoCentered = true
+                val centerLat = locations.sumOf { it.latitude } / locations.size
+                val centerLon = locations.sumOf { it.longitude } / locations.size
+                binding.mapView.controller.apply {
+                    setZoom(18.0)
+                    animateTo(GeoPoint(centerLat, centerLon))
+                }
             }
         }
     }
@@ -515,6 +544,13 @@ class MapActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        val center = binding.mapView.mapCenter
+        MapViewportPrefs.save(
+            this,
+            lat  = center.latitude,
+            lng  = center.longitude,
+            zoom = binding.mapView.zoomLevelDouble
+        )
         binding.mapView.onPause()
         myLocationOverlay.disableMyLocation()
     }

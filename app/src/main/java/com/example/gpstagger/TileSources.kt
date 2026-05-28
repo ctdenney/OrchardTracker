@@ -2,13 +2,33 @@ package com.example.gpstagger
 
 import android.content.Context
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.MapTileIndex
 
 object TileSources {
 
-    /** Standard OpenStreetMap street tiles. */
-    val OSM = TileSourceFactory.MAPNIK
+    /**
+     * Deepest zoom the user can reach. Past the tile source's native max,
+     * osmdroid upscales the deepest available tile — pixelated but still
+     * useful for sub-tile precision when tagging points or sighting rows.
+     */
+    const val MAX_ZOOM = 22
+    const val OSM_NATIVE_MAX = 19
+    const val ESRI_NATIVE_MAX = 19
+
+    /**
+     * Standard OpenStreetMap street tiles. Wraps the stock MAPNIK source so
+     * we can extend the allowed zoom beyond OSM's native 19.
+     */
+    val OSM = XYTileSource(
+        "Mapnik", 0, MAX_ZOOM, 256, ".png",
+        arrayOf(
+            "https://a.tile.openstreetmap.org/",
+            "https://b.tile.openstreetmap.org/",
+            "https://c.tile.openstreetmap.org/"
+        ),
+        "© OpenStreetMap contributors"
+    )
 
     /**
      * ESRI World Imagery satellite tiles.
@@ -17,7 +37,7 @@ object TileSources {
      * Attribution: Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community
      */
     val ESRI_SATELLITE = object : OnlineTileSourceBase(
-        "ESRISatellite", 0, 19, 256, ".jpg",
+        "ESRISatellite", 0, MAX_ZOOM, 256, ".jpg",
         arrayOf("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/")
     ) {
         override fun getTileURLString(pMapTileIndex: Long): String =
