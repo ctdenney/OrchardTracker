@@ -81,4 +81,8 @@ dependencies {
 
     // OkHttp (for update checker)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // USB serial — for external USB GPS receivers that emit NMEA 0183 over
+    // a USB-serial bridge (CDC-ACM, FTDI, CP210x, CH34x, PL2303, etc.).
+    implementation("com.github.mik3y:usb-serial-for-android:3.7.2")
 }

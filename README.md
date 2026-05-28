@@ -16,6 +16,7 @@ An Android app for tagging GPS coordinates in the field. Designed for use on a t
 - **Screen stays on** — display never sleeps while the app is open
 - **Haptic feedback** — short vibration confirms every saved point without looking at the screen
 - **Offline map tiles** — download street map or satellite tiles for any area so the map works without cell service
+- **External USB GPS support** — plug in any NMEA 0183 receiver (u-blox, GlobalSat BU-353, BadElf, Garmin GLO, generic CDC/FTDI/CP210x/CH34x serial pucks) for survey-grade accuracy; toggle the source in ⋮ → Settings
 - **No account or API key required**
 
 ### Default button labels

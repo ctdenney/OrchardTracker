@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  USB device IDs that the app will be offered for when attached. This list
+  covers the common USB-serial bridge chips that almost every external GPS
+  receiver speaks over: CDC-ACM (class 2/comm), FTDI, Silicon Labs CP210x,
+  WCH CH340/CH341, and Prolific PL2303. The actual GPS hardware sits
+  behind the bridge and emits NMEA 0183 sentences.
+
+  This is intentionally permissive — `usb-serial-for-android` does the final
+  driver match when we open the port, so a few false-positive prompts here
+  are better than missing a legitimate device.
+-->
+<resources>
+    <!-- CDC-ACM (most modern u-blox, BadElf, Garmin GLO, etc.) -->
+    <usb-device class="2" subclass="2" />
+
+    <!-- FTDI: FT232 / FT231X (older GlobalSat BU-353 variants) -->
+    <usb-device vendor-id="1027" />
+
+    <!-- Silicon Labs CP210x (BU-353-S4, many marine pucks) -->
+    <usb-device vendor-id="4292" />
+
+    <!-- WCH CH340 / CH341 (very common low-cost GPS adapters) -->
+    <usb-device vendor-id="6790" />
+
+    <!-- Prolific PL2303 (older serial-to-USB GPS cables) -->
+    <usb-device vendor-id="1659" />
+
+    <!-- u-blox direct USB (ZED-F9P, NEO-M9N eval kits, etc.) -->
+    <usb-device vendor-id="5446" />
+</resources>

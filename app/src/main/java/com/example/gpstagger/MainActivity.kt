@@ -20,20 +20,15 @@ import androidx.lifecycle.lifecycleScope
 import com.example.gpstagger.data.LocationDatabase
 import com.example.gpstagger.data.TaggedLocation
 import com.example.gpstagger.databinding.ActivityMainBinding
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationResult
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
+import com.example.gpstagger.gps.GpsPrefs
+import com.example.gpstagger.gps.LocationSource
 import kotlinx.coroutines.launch
 import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private lateinit var locationCallback: LocationCallback
+    private lateinit var locationSource: LocationSource
     private var currentLocation: Location? = null
     private lateinit var db: LocationDatabase
 
@@ -51,7 +46,7 @@ class MainActivity : AppCompatActivity() {
         if (permissions.getOrDefault(Manifest.permission.ACCESS_FINE_LOCATION, false) ||
             permissions.getOrDefault(Manifest.permission.ACCESS_COARSE_LOCATION, false)
         ) {
-            startLocationUpdates()
+            locationSource.start()
         } else {
             Toast.makeText(this, "Location permission is required", Toast.LENGTH_LONG).show()
         }
@@ -66,9 +61,14 @@ class MainActivity : AppCompatActivity() {
 
         TagLibrary.ensureInitialized(this)
         db = LocationDatabase.getDatabase(this)
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-
-        setupLocationCallback()
+        locationSource = LocationSource(this).also { src ->
+            src.setListener(object : LocationSource.Listener {
+                override fun onLocation(location: Location) = updateLocationDisplay(location)
+                override fun onSourceStatus(label: String) {
+                    binding.tvGpsStatus.text = label
+                }
+            })
+        }
 
         tagButtons.forEachIndexed { slot, button ->
             button.setOnClickListener { recordLocation(slot) }
@@ -123,6 +123,10 @@ class MainActivity : AppCompatActivity() {
                 checkForUpdate()
                 return true
             }
+            R.id.action_drive_mode -> {
+                startActivity(Intent(this, DriveModeActivity::class.java))
+                return true
+            }
         }
         return super.onOptionsItemSelected(item)
     }
@@ -173,17 +177,13 @@ class MainActivity : AppCompatActivity() {
 
     // ── Location ──────────────────────────────────────────────────────────────
 
-    private fun setupLocationCallback() {
-        locationCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                result.lastLocation?.let { updateLocationDisplay(it) }
-            }
-        }
-    }
-
     private fun updateLocationDisplay(location: Location) {
         currentLocation = location
-        binding.tvGpsStatus.text = "GPS: Active"
+        val sourceLabel = when (GpsPrefs.source(this)) {
+            GpsPrefs.Source.USB -> "USB GPS: Active"
+            GpsPrefs.Source.INTERNAL -> "GPS: Active"
+        }
+        binding.tvGpsStatus.text = sourceLabel
         binding.tvLatitude.text  = String.format(Locale.US, "%.6f°", location.latitude)
         binding.tvLongitude.text = String.format(Locale.US, "%.6f°", location.longitude)
 
@@ -232,10 +232,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkLocationPermission() {
+        // USB GPS doesn't require ACCESS_FINE_LOCATION, but we still request it
+        // so users can switch back to the internal source without re-prompting.
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
             == PackageManager.PERMISSION_GRANTED
         ) {
-            startLocationUpdates()
+            locationSource.start()
         } else {
             locationPermissionRequest.launch(
                 arrayOf(
@@ -246,20 +248,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startLocationUpdates() {
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2_000L)
-            .setMinUpdateIntervalMillis(1_000L)
-            .build()
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-            == PackageManager.PERMISSION_GRANTED
-        ) {
-            fusedLocationClient.requestLocationUpdates(request, locationCallback, mainLooper)
-            binding.tvGpsStatus.text = "GPS: Acquiring…"
-        }
-    }
-
     override fun onPause() {
         super.onPause()
-        fusedLocationClient.removeLocationUpdates(locationCallback)
+        locationSource.stop()
     }
 }

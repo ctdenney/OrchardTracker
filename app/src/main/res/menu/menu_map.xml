@@ -17,4 +17,14 @@
         android:title="Download Offline Map"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/action_toggle_rows"
+        android:title="Hide Rows"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_reset_coverage"
+        android:title="Reset Row Coverage"
+        app:showAsAction="never" />
+
 </menu>

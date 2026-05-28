@@ -22,4 +22,9 @@
         android:title="Check for Updates"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/action_drive_mode"
+        android:title="Drive Mode"
+        app:showAsAction="never" />
+
 </menu>

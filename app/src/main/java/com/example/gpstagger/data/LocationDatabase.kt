@@ -7,10 +7,15 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [TaggedLocation::class, DeletedLocation::class], version = 4, exportSchema = false)
+@Database(
+    entities = [TaggedLocation::class, DeletedLocation::class, RowEntity::class],
+    version = 6,
+    exportSchema = false
+)
 abstract class LocationDatabase : RoomDatabase() {
 
     abstract fun locationDao(): LocationDao
+    abstract fun rowDao(): RowDao
 
     companion object {
         @Volatile
@@ -53,6 +58,35 @@ abstract class LocationDatabase : RoomDatabase() {
             }
         }
 
+        /** v4 -> v5: adds rows table for orchard-row definitions synced from server. */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS rows (
+                        uuid TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        block TEXT NOT NULL DEFAULT '',
+                        start_lat REAL NOT NULL,
+                        start_lng REAL NOT NULL,
+                        end_lat REAL NOT NULL,
+                        end_lng REAL NOT NULL,
+                        width_m REAL NOT NULL DEFAULT 0,
+                        updated_at INTEGER NOT NULL,
+                        deleted INTEGER NOT NULL DEFAULT 0,
+                        synced INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+            }
+        }
+
+        /** v5 -> v6: adds coverage span columns to the rows table. */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE rows ADD COLUMN coverage_min_t REAL")
+                database.execSQL("ALTER TABLE rows ADD COLUMN coverage_max_t REAL")
+            }
+        }
+
         fun getDatabase(context: Context): LocationDatabase =
             INSTANCE ?: synchronized(this) {
                 Room.databaseBuilder(
@@ -60,7 +94,7 @@ abstract class LocationDatabase : RoomDatabase() {
                     LocationDatabase::class.java,
                     "gps_tagger_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
                     .also { INSTANCE = it }
             }

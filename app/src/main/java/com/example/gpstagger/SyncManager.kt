@@ -2,6 +2,7 @@ package com.example.gpstagger
 
 import android.content.Context
 import com.example.gpstagger.data.LocationDatabase
+import com.example.gpstagger.data.RowEntity
 import com.example.gpstagger.data.TaggedLocation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -33,6 +34,7 @@ object SyncManager {
 
         val db = LocationDatabase.getDatabase(ctx)
         val dao = db.locationDao()
+        val rowDao = db.rowDao()
         val deviceId = SyncConfig.getDeviceId(ctx)
         val lastSync = SyncConfig.getLastSyncAt(ctx)
 
@@ -45,6 +47,10 @@ object SyncManager {
         // Gather tag library state
         val tags = TagLibrary.getAllTags(ctx)
         val slots = TagLibrary.getSlotAssignments(ctx)
+
+        // Gather unsynced rows (rows are usually authored on the server, so
+        // this is typically empty — but include for completeness).
+        val unsyncedRows = rowDao.getUnsynced()
 
         // Build sync request — include tombstones as deleted locations
         val allLocations = locationsToJson(unsynced)
@@ -70,6 +76,7 @@ object SyncManager {
             put("locations", allLocations)
             put("tags", tagsToJson(tags))
             put("slots", slotsToJson(slots))
+            put("rows", rowsToJson(unsyncedRows))
         }
 
         val response = try {
@@ -169,6 +176,41 @@ object SyncManager {
             TagLibrary.setSlot(ctx, slot, tagId.ifEmpty { null })
         }
 
+        // Apply incoming rows
+        val incomingRows = json.optJSONArray("rows") ?: JSONArray()
+        for (i in 0 until incomingRows.length()) {
+            val r = incomingRows.getJSONObject(i)
+            val uuid = r.getString("uuid")
+            val incomingUpdated = r.getLong("updated_at")
+            val existing = rowDao.getByUuid(uuid)
+            if (existing != null && existing.updatedAt >= incomingUpdated) continue
+            rowDao.upsert(
+                RowEntity(
+                    uuid      = uuid,
+                    name      = r.optString("name", ""),
+                    block     = r.optString("block", ""),
+                    startLat  = r.getDouble("start_lat"),
+                    startLng  = r.getDouble("start_lng"),
+                    endLat    = r.getDouble("end_lat"),
+                    endLng    = r.getDouble("end_lng"),
+                    widthM    = r.optDouble("width_m", 0.0),
+                    updatedAt = incomingUpdated,
+                    deleted   = r.optBoolean("deleted", false),
+                    synced    = true,
+                    // Coverage is a local-only property — preserve whatever
+                    // the operator has driven so far when the server pushes
+                    // a row definition update.
+                    coverageMinT = existing?.coverageMinT,
+                    coverageMaxT = existing?.coverageMaxT
+                )
+            )
+        }
+
+        // Mark our pushed rows as synced
+        if (unsyncedRows.isNotEmpty()) {
+            rowDao.markSynced(unsyncedRows.map { it.uuid })
+        }
+
         SyncConfig.setLastSyncAt(ctx, serverTime)
 
         Result.Success(pushed = unsynced.size, pulled = pulled)
@@ -214,6 +256,25 @@ object SyncManager {
                 put("slot", slot)
                 put("tag_id", tagId ?: "")
                 put("updated_at", System.currentTimeMillis())
+            })
+        }
+        return arr
+    }
+
+    private fun rowsToJson(rows: List<RowEntity>): JSONArray {
+        val arr = JSONArray()
+        rows.forEach { r ->
+            arr.put(JSONObject().apply {
+                put("uuid", r.uuid)
+                put("name", r.name)
+                put("block", r.block)
+                put("start_lat", r.startLat)
+                put("start_lng", r.startLng)
+                put("end_lat", r.endLat)
+                put("end_lng", r.endLng)
+                put("width_m", r.widthM)
+                put("updated_at", r.updatedAt)
+                put("deleted", r.deleted)
             })
         }
         return arr

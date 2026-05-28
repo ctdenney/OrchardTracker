@@ -21,13 +21,15 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.gpstagger.data.LocationDatabase
+import com.example.gpstagger.data.RowEntity
 import com.example.gpstagger.data.TaggedLocation
 import com.example.gpstagger.databinding.ActivityMapBinding
+import com.example.gpstagger.gps.LocationSourceMyLocationProvider
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.overlay.Marker
-import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
+import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
 class MapActivity : AppCompatActivity() {
@@ -48,6 +50,11 @@ class MapActivity : AppCompatActivity() {
 
     private var inSelectionMode = false
 
+    /** Row polylines currently rendered on the map, keyed by row UUID. */
+    private val rowPolylines = mutableMapOf<String, Polyline>()
+    private var rowsVisible: Boolean = true
+    private var lastRows: List<RowEntity> = emptyList()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().apply {
@@ -67,6 +74,7 @@ class MapActivity : AppCompatActivity() {
         db = LocationDatabase.getDatabase(this)
         setupMap()
         loadLocations()
+        loadRows()
         setupLegendToggle()
 
         binding.btnExport.setOnClickListener { exportCsv() }
@@ -85,7 +93,7 @@ class MapActivity : AppCompatActivity() {
         }
 
         myLocationOverlay = MyLocationNewOverlay(
-            GpsMyLocationProvider(this), binding.mapView
+            LocationSourceMyLocationProvider(this), binding.mapView
         )
         myLocationOverlay.enableMyLocation()
 
@@ -149,6 +157,8 @@ class MapActivity : AppCompatActivity() {
         binding.mapView.overlays.clear()
         binding.mapView.overlays.add(myLocationOverlay)
         binding.mapView.overlays.add(areaSelectionOverlay)
+        // Rows live underneath markers so they don't intercept marker clicks.
+        rowPolylines.values.forEach { binding.mapView.overlays.add(it) }
 
         val filtered = if (activeTagFilter.isEmpty()) allLocations
                        else allLocations.filter { it.tag in activeTagFilter }
@@ -169,6 +179,72 @@ class MapActivity : AppCompatActivity() {
         }
 
         binding.mapView.invalidate()
+    }
+
+    // ── Row rendering & coverage ──────────────────────────────────────────────
+
+    private fun loadRows() {
+        db.rowDao().observeActive().observe(this) { latest ->
+            lastRows = latest ?: emptyList()
+            renderRows()
+        }
+    }
+
+    /**
+     * Rebuild the row overlay. Color encodes coverage state — green for
+     * driven, amber for partial, yellow for pending. Rows are drawn under
+     * point markers but over the base tile layer.
+     */
+    private fun renderRows() {
+        // Remove any polylines for rows that no longer exist.
+        val live = lastRows.associateBy { it.uuid }
+        val gone = rowPolylines.keys - live.keys
+        gone.forEach { uuid ->
+            rowPolylines.remove(uuid)?.let { binding.mapView.overlays.remove(it) }
+        }
+
+        if (!rowsVisible) {
+            rowPolylines.values.forEach { binding.mapView.overlays.remove(it) }
+            rowPolylines.clear()
+            binding.mapView.invalidate()
+            return
+        }
+
+        val dp = resources.displayMetrics.density
+        lastRows.forEach { row ->
+            val color = when (row.coverageState()) {
+                RowEntity.Coverage.COVERED -> Color.parseColor("#66BB6A")
+                RowEntity.Coverage.PARTIAL -> Color.parseColor("#FFA726")
+                RowEntity.Coverage.NONE    -> Color.parseColor("#FFC107")
+            }
+            val existing = rowPolylines[row.uuid]
+            val polyline = existing ?: Polyline().also {
+                rowPolylines[row.uuid] = it
+                binding.mapView.overlays.add(it)
+            }
+            polyline.setPoints(listOf(
+                GeoPoint(row.startLat, row.startLng),
+                GeoPoint(row.endLat,   row.endLng)
+            ))
+            polyline.outlinePaint.apply {
+                this.color = color
+                strokeWidth = 4f * dp
+                isAntiAlias = true
+            }
+            polyline.title = row.name
+        }
+        binding.mapView.invalidate()
+    }
+
+    private fun confirmResetCoverage() {
+        AlertDialog.Builder(this)
+            .setTitle("Reset row coverage?")
+            .setMessage("Clears the driven / pending state for every row so you can start a fresh task. Row definitions themselves are not affected.")
+            .setPositiveButton("Reset") { _, _ ->
+                lifecycleScope.launch { db.rowDao().resetAllCoverage() }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     // ── Individual point deletion ─────────────────────────────────────────────
@@ -389,6 +465,9 @@ class MapActivity : AppCompatActivity() {
             if (esri) "Switch to Street Map" else "Switch to Satellite"
         menu.findItem(R.id.action_filter_tags)?.title =
             if (activeTagFilter.isEmpty()) "Filter Tags" else "Filter Tags ✓"
+        menu.findItem(R.id.action_toggle_rows)?.title =
+            if (rowsVisible) "Hide Rows" else "Show Rows"
+        menu.findItem(R.id.action_reset_coverage)?.isVisible = lastRows.isNotEmpty()
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -413,6 +492,13 @@ class MapActivity : AppCompatActivity() {
                 )
                 true
             }
+            R.id.action_toggle_rows -> {
+                rowsVisible = !rowsVisible
+                renderRows()
+                invalidateOptionsMenu()
+                true
+            }
+            R.id.action_reset_coverage -> { confirmResetCoverage(); true }
             else -> super.onOptionsItemSelected(item)
         }
     }
