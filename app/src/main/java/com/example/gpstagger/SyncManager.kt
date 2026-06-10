@@ -75,7 +75,7 @@ object SyncManager {
             put("last_sync_at", lastSync)
             put("locations", allLocations)
             put("tags", tagsToJson(tags))
-            put("slots", slotsToJson(slots))
+            put("slots", slotsToJson(ctx, slots))
             put("rows", rowsToJson(unsyncedRows))
         }
 
@@ -148,32 +148,39 @@ object SyncManager {
             }
         }
 
-        // Apply incoming tags
+        // Apply incoming tags (only when the server's copy is newer than ours,
+        // and carrying the server's timestamp so we don't re-push it as a
+        // fresh local edit)
         val incomingTags = json.optJSONArray("tags") ?: JSONArray()
         for (i in 0 until incomingTags.length()) {
             val t = incomingTags.getJSONObject(i)
             val id = t.getString("id")
             val deleted = t.optBoolean("deleted", false)
+            val updatedAt = t.optLong("updated_at", 0L)
+            val existing = TagLibrary.getAllTags(ctx).find { it.id == id }
+            if (existing != null && existing.updatedAt >= updatedAt) continue
+
             if (deleted) {
-                TagLibrary.deleteTag(ctx, id)
+                if (existing != null) TagLibrary.deleteTag(ctx, id, updatedAt)
             } else {
                 val name = t.getString("name")
-                val existingTags = TagLibrary.getAllTags(ctx)
-                if (existingTags.any { it.id == id }) {
-                    TagLibrary.renameTag(ctx, id, name)
+                if (existing != null) {
+                    TagLibrary.renameTag(ctx, id, name, updatedAt)
                 } else {
-                    TagLibrary.addTagWithId(ctx, id, name)
+                    TagLibrary.addTagWithId(ctx, id, name, updatedAt)
                 }
             }
         }
 
-        // Apply incoming slot assignments
+        // Apply incoming slot assignments (same newer-wins rule)
         val incomingSlots = json.optJSONArray("slots") ?: JSONArray()
         for (i in 0 until incomingSlots.length()) {
             val s = incomingSlots.getJSONObject(i)
             val slot = s.getInt("slot")
             val tagId = s.optString("tag_id", "")
-            TagLibrary.setSlot(ctx, slot, tagId.ifEmpty { null })
+            val updatedAt = s.optLong("updated_at", 0L)
+            if (TagLibrary.getSlotUpdatedAt(ctx, slot) >= updatedAt) continue
+            TagLibrary.setSlot(ctx, slot, tagId.ifEmpty { null }, updatedAt)
         }
 
         // Apply incoming rows
@@ -242,20 +249,20 @@ object SyncManager {
             arr.put(JSONObject().apply {
                 put("id", tag.id)
                 put("name", tag.name)
-                put("updated_at", System.currentTimeMillis())
+                put("updated_at", tag.updatedAt)
                 put("deleted", false)
             })
         }
         return arr
     }
 
-    private fun slotsToJson(assignments: Array<String?>): JSONArray {
+    private fun slotsToJson(ctx: Context, assignments: Array<String?>): JSONArray {
         val arr = JSONArray()
         assignments.forEachIndexed { slot, tagId ->
             arr.put(JSONObject().apply {
                 put("slot", slot)
                 put("tag_id", tagId ?: "")
-                put("updated_at", System.currentTimeMillis())
+                put("updated_at", TagLibrary.getSlotUpdatedAt(ctx, slot))
             })
         }
         return arr

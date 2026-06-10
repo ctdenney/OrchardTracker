@@ -22,6 +22,7 @@ object TagLibrary {
     private const val KEY_TAGS    = "tags"
     private const val KEY_NEXT_ID = "next_id"
     private const val KEY_SLOT    = "slot_"
+    private const val KEY_SLOT_TS = "slot_ts_"
     private const val KEY_INIT    = "initialized"
 
     private val DEFAULTS = listOf(
@@ -66,10 +67,12 @@ object TagLibrary {
             oldPrefs.getString("tag_$i", default) ?: default
         }
 
+        // Defaults get updatedAt = 0 so they never win a sync conflict against
+        // names/assignments configured on another device or the server.
         val tags = names.mapIndexed { i, name -> Tag(i.toString(), name) }
         saveTags(ctx, tags)
         p.edit().putInt(KEY_NEXT_ID, tags.size).apply()
-        tags.forEachIndexed { slot, tag -> setSlot(ctx, slot, tag.id) }
+        tags.forEachIndexed { slot, tag -> setSlot(ctx, slot, tag.id, updatedAt = 0L) }
         p.edit().putBoolean(KEY_INIT, true).apply()
     }
 
@@ -81,15 +84,15 @@ object TagLibrary {
         val p  = prefs(ctx)
         val id = p.getInt(KEY_NEXT_ID, 0).toString()
         p.edit().putInt(KEY_NEXT_ID, id.toInt() + 1).apply()
-        val tag  = Tag(id, name.trim())
+        val tag  = Tag(id, name.trim(), System.currentTimeMillis())
         val tags = loadTags(ctx).toMutableList().also { it.add(tag) }
         saveTags(ctx, tags)
         return tag
     }
 
     /** Adds a tag with a specific ID (used during sync from server). */
-    fun addTagWithId(ctx: Context, id: String, name: String): Tag {
-        val tag = Tag(id, name.trim())
+    fun addTagWithId(ctx: Context, id: String, name: String, updatedAt: Long): Tag {
+        val tag = Tag(id, name.trim(), updatedAt)
         val tags = loadTags(ctx).toMutableList().also { it.add(tag) }
         saveTags(ctx, tags)
         // Ensure next_id stays ahead of any imported ID
@@ -101,15 +104,23 @@ object TagLibrary {
         return tag
     }
 
-    fun renameTag(ctx: Context, id: String, newName: String) {
-        saveTags(ctx, loadTags(ctx).map { if (it.id == id) it.copy(name = newName.trim()) else it })
+    fun renameTag(
+        ctx: Context, id: String, newName: String,
+        updatedAt: Long = System.currentTimeMillis()
+    ) {
+        saveTags(ctx, loadTags(ctx).map {
+            if (it.id == id) it.copy(name = newName.trim(), updatedAt = updatedAt) else it
+        })
     }
 
     /** Removes the tag from the library and clears it from any active slots. */
-    fun deleteTag(ctx: Context, id: String) {
+    fun deleteTag(ctx: Context, id: String, updatedAt: Long = System.currentTimeMillis()) {
         val edit = prefs(ctx).edit()
         getSlotAssignments(ctx).forEachIndexed { slot, tagId ->
-            if (tagId == id) edit.remove(KEY_SLOT + slot)
+            if (tagId == id) {
+                edit.remove(KEY_SLOT + slot)
+                edit.putLong(KEY_SLOT_TS + slot, updatedAt)
+            }
         }
         edit.apply()
         saveTags(ctx, loadTags(ctx).filter { it.id != id })
@@ -121,11 +132,19 @@ object TagLibrary {
     fun getSlotAssignments(ctx: Context): Array<String?> =
         Array(6) { slot -> prefs(ctx).getString(KEY_SLOT + slot, null) }
 
-    fun setSlot(ctx: Context, slot: Int, tagId: String?) {
+    fun setSlot(
+        ctx: Context, slot: Int, tagId: String?,
+        updatedAt: Long = System.currentTimeMillis()
+    ) {
         prefs(ctx).edit().apply {
             if (tagId == null) remove(KEY_SLOT + slot) else putString(KEY_SLOT + slot, tagId)
+            putLong(KEY_SLOT_TS + slot, updatedAt)
         }.apply()
     }
+
+    /** Epoch-millis of the slot's last deliberate edit; 0 if never edited. */
+    fun getSlotUpdatedAt(ctx: Context, slot: Int): Long =
+        prefs(ctx).getLong(KEY_SLOT_TS + slot, 0L)
 
     fun getTagForSlot(ctx: Context, slot: Int): Tag? {
         val id = prefs(ctx).getString(KEY_SLOT + slot, null) ?: return null
@@ -153,14 +172,16 @@ object TagLibrary {
             val arr = JSONArray(json)
             (0 until arr.length()).map {
                 val obj = arr.getJSONObject(it)
-                Tag(obj.getString("id"), obj.getString("name"))
+                Tag(obj.getString("id"), obj.getString("name"), obj.optLong("updated_at", 0L))
             }
         } catch (e: Exception) { emptyList() }
     }
 
     private fun saveTags(ctx: Context, tags: List<Tag>) {
         val arr = JSONArray()
-        tags.forEach { arr.put(JSONObject().put("id", it.id).put("name", it.name)) }
+        tags.forEach {
+            arr.put(JSONObject().put("id", it.id).put("name", it.name).put("updated_at", it.updatedAt))
+        }
         prefs(ctx).edit().putString(KEY_TAGS, arr.toString()).apply()
     }
 }
