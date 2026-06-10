@@ -18,12 +18,13 @@ import org.json.JSONObject
  */
 object TagLibrary {
 
-    private const val PREFS       = "tag_library"
-    private const val KEY_TAGS    = "tags"
-    private const val KEY_NEXT_ID = "next_id"
-    private const val KEY_SLOT    = "slot_"
-    private const val KEY_SLOT_TS = "slot_ts_"
-    private const val KEY_INIT    = "initialized"
+    private const val PREFS          = "tag_library"
+    private const val KEY_TAGS       = "tags"
+    private const val KEY_NEXT_ID    = "next_id"
+    private const val KEY_SLOT       = "slot_"
+    private const val KEY_SLOT_TS    = "slot_ts_"
+    private const val KEY_INIT       = "initialized"
+    private const val KEY_TOMBSTONES = "tag_tombstones"
 
     private val DEFAULTS = listOf(
         "Gopher", "Blight", "Blackberry", "Broken Irrigation", "Prune", "End Tank"
@@ -113,8 +114,17 @@ object TagLibrary {
         })
     }
 
-    /** Removes the tag from the library and clears it from any active slots. */
-    fun deleteTag(ctx: Context, id: String, updatedAt: Long = System.currentTimeMillis()) {
+    /**
+     * Removes the tag from the library and clears it from any active slots.
+     * A local deliberate delete records a tombstone so the deletion reaches
+     * the server on the next sync; pass recordTombstone = false when applying
+     * a delete that came *from* the server.
+     */
+    fun deleteTag(
+        ctx: Context, id: String,
+        updatedAt: Long = System.currentTimeMillis(),
+        recordTombstone: Boolean = true
+    ) {
         val edit = prefs(ctx).edit()
         getSlotAssignments(ctx).forEachIndexed { slot, tagId ->
             if (tagId == id) {
@@ -124,7 +134,32 @@ object TagLibrary {
         }
         edit.apply()
         saveTags(ctx, loadTags(ctx).filter { it.id != id })
+
+        if (recordTombstone) {
+            val obj = tombstonesJson(ctx).put(id, updatedAt)
+            prefs(ctx).edit().putString(KEY_TOMBSTONES, obj.toString()).apply()
+        }
     }
+
+    /** Deleted tag id → deletion epoch-millis, awaiting push to the server. */
+    fun getTagTombstones(ctx: Context): Map<String, Long> {
+        val obj = tombstonesJson(ctx)
+        return obj.keys().asSequence().associateWith { obj.getLong(it) }
+    }
+
+    /** Forgets tombstones that were successfully pushed to the server. */
+    fun clearTagTombstones(ctx: Context, ids: Collection<String>) {
+        val obj = tombstonesJson(ctx)
+        ids.forEach { obj.remove(it) }
+        prefs(ctx).edit().putString(KEY_TOMBSTONES, obj.toString()).apply()
+    }
+
+    private fun tombstonesJson(ctx: Context): JSONObject =
+        try {
+            JSONObject(prefs(ctx).getString(KEY_TOMBSTONES, "{}") ?: "{}")
+        } catch (e: Exception) {
+            JSONObject()
+        }
 
     // ── Slot assignments ──────────────────────────────────────────────────────
 

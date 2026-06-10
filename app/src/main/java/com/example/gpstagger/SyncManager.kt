@@ -44,8 +44,10 @@ object SyncManager {
         // Gather pending deletions (tombstones)
         val pendingDeletions = dao.getPendingDeletions()
 
-        // Gather tag library state
+        // Gather tag library state, including tombstones for locally
+        // deleted tags
         val tags = TagLibrary.getAllTags(ctx)
+        val tagTombstones = TagLibrary.getTagTombstones(ctx)
         val slots = TagLibrary.getSlotAssignments(ctx)
 
         // Gather unsynced rows (rows are usually authored on the server, so
@@ -70,11 +72,21 @@ object SyncManager {
             })
         }
 
+        val allTags = tagsToJson(tags)
+        tagTombstones.forEach { (id, deletedAt) ->
+            allTags.put(JSONObject().apply {
+                put("id", id)
+                put("name", "")
+                put("updated_at", deletedAt)
+                put("deleted", true)
+            })
+        }
+
         val body = JSONObject().apply {
             put("device_id", deviceId)
             put("last_sync_at", lastSync)
             put("locations", allLocations)
-            put("tags", tagsToJson(tags))
+            put("tags", allTags)
             put("slots", slotsToJson(ctx, slots))
             put("rows", rowsToJson(unsyncedRows))
         }
@@ -110,6 +122,9 @@ object SyncManager {
         // Clear tombstones that were successfully pushed
         if (pendingDeletions.isNotEmpty()) {
             dao.clearTombstones(pendingDeletions.map { it.uuid })
+        }
+        if (tagTombstones.isNotEmpty()) {
+            TagLibrary.clearTagTombstones(ctx, tagTombstones.keys)
         }
 
         // Apply incoming locations
@@ -161,7 +176,9 @@ object SyncManager {
             if (existing != null && existing.updatedAt >= updatedAt) continue
 
             if (deleted) {
-                if (existing != null) TagLibrary.deleteTag(ctx, id, updatedAt)
+                if (existing != null) {
+                    TagLibrary.deleteTag(ctx, id, updatedAt, recordTombstone = false)
+                }
             } else {
                 val name = t.getString("name")
                 if (existing != null) {
