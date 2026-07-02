@@ -12,9 +12,10 @@ import org.json.JSONObject
  * On first run it migrates any labels previously saved by the old
  * TagPreferences ("tag_labels") storage, so existing data is preserved.
  *
- * Slot colours are fixed per position (0-5) regardless of which tag is
- * assigned there, so historical map markers keep their colour even after
- * a tag is renamed or reassigned.
+ * Slot colours are fixed per position (0-5). Map markers are coloured per
+ * *tag* at display time via [colorForTag] — the slot stored on each point is
+ * only a record of which button recorded it, and tags drift between slots
+ * over time, so using it for display paints one tag in several colours.
  */
 object TagLibrary {
 
@@ -50,6 +51,24 @@ object TagLibrary {
         4    -> R.color.tag_sample
         5    -> R.color.tag_mark
         else -> android.R.color.darker_gray
+    }
+
+    /**
+     * Display colour for a tag name, resolved at render time:
+     * the assigned slot's colour if the tag currently sits on a button
+     * (so markers match the buttons), otherwise a hue hashed from the name.
+     * Both the fallback hash (String.hashCode) and the hue formula match the
+     * server web UI, so every surface paints the same tag the same colour.
+     */
+    fun colorForTag(ctx: Context, name: String): Int {
+        val tag = loadTags(ctx).find { it.name == name }
+        if (tag != null) {
+            val slot = getSlotsForTag(ctx, tag.id).firstOrNull()
+            if (slot != null) return slotColor(slot)
+        }
+        val hue = ((name.hashCode() % 360) + 360) % 360
+        // Web uses hsl(hue, 65%, 45%); this is the same colour in HSV terms.
+        return Color.HSVToColor(floatArrayOf(hue.toFloat(), 0.788f, 0.7425f))
     }
 
     // ── Initialisation / migration ────────────────────────────────────────────

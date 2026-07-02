@@ -197,7 +197,7 @@ class MapActivity : AppCompatActivity() {
                 position = GeoPoint(loc.latitude, loc.longitude)
                 title    = "${loc.tag}  —  ${loc.formattedTime()}"
                 snippet  = "Lat: ${loc.latitude}\nLon: ${loc.longitude}\nAccuracy: ±${loc.accuracy.toInt()} m"
-                icon     = createCircleMarker(markerColor(loc.slot))
+                icon     = createCircleMarker(TagLibrary.colorForTag(this@MapActivity, loc.tag))
                 setOnMarkerClickListener { m, _ ->
                     showPointDeleteDialog(markerLocationMap[m] ?: return@setOnMarkerClickListener true)
                     true
@@ -378,14 +378,11 @@ class MapActivity : AppCompatActivity() {
         val dp = resources.displayMetrics.density
         binding.legendItems.removeAllViews()
 
-        // Build legend from tags actually present in the data, keyed by tag name.
-        // Use the slot stored on each location to determine the color.
-        val tagSlotMap = allLocations
-            .groupBy { it.tag }
-            .mapValues { (_, locs) -> locs.first().slot }
-            .toSortedMap()
+        // Build legend from tags actually present in the data, keyed by tag
+        // name, coloured the same way as the markers.
+        val tagNames = allLocations.map { it.tag }.distinct().sorted()
 
-        for ((tag, slot) in tagSlotMap) {
+        for (tag in tagNames) {
             if (activeTagFilter.isNotEmpty() && tag !in activeTagFilter) continue
 
             val row = LinearLayout(this).apply {
@@ -401,7 +398,7 @@ class MapActivity : AppCompatActivity() {
                 }
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setColor(TagLibrary.slotColor(slot))
+                    setColor(TagLibrary.colorForTag(this@MapActivity, tag))
                 }
             }
 
@@ -418,8 +415,6 @@ class MapActivity : AppCompatActivity() {
     }
 
     // ── Marker helpers ────────────────────────────────────────────────────────
-
-    private fun markerColor(slot: Int): Int = TagLibrary.slotColor(slot)
 
     private fun createCircleMarker(color: Int): Drawable {
         val dp = resources.displayMetrics.density

@@ -50,8 +50,8 @@ object SyncManager {
         val tagTombstones = TagLibrary.getTagTombstones(ctx)
         val slots = TagLibrary.getSlotAssignments(ctx)
 
-        // Gather unsynced rows (rows are usually authored on the server, so
-        // this is typically empty — but include for completeness).
+        // Gather unsynced rows — rows recorded in Drive Mode land here until
+        // the next successful sync pushes them to the server.
         val unsyncedRows = rowDao.getUnsynced()
 
         // Build sync request — include tombstones as deleted locations

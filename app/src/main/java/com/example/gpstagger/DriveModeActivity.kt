@@ -5,10 +5,13 @@ import android.location.Location
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.text.InputType
 import android.view.Menu
 import android.view.MenuItem
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -20,9 +23,11 @@ import com.example.gpstagger.databinding.ActivityDriveModeBinding
 import com.example.gpstagger.gps.LocationSource
 import com.example.gpstagger.rows.CalibrationOffset
 import com.example.gpstagger.rows.CalibrationSession
+import com.example.gpstagger.rows.Geo
 import com.example.gpstagger.rows.RowTracker
 import kotlinx.coroutines.launch
 import java.util.Locale
+import java.util.UUID
 import kotlin.math.abs
 
 /**
@@ -41,6 +46,14 @@ class DriveModeActivity : AppCompatActivity() {
     /** Latest raw fix used both for tag recording and for tracker input. */
     private var currentLocation: Location? = null
 
+    /** Latest offset-corrected [lat, lng] — the frame the tracker (and any
+     *  row recorded on this device) lives in. */
+    private var currentCorrected: DoubleArray? = null
+
+    /** Corrected [lat, lng] captured when the operator started recording a
+     *  row, or null when not recording. */
+    private var rowRecordStart: DoubleArray? = null
+
     private val tagButtons: List<Button> by lazy {
         listOf(
             binding.btnStart, binding.btnEnd, binding.btnObstacle,
@@ -58,6 +71,12 @@ class DriveModeActivity : AppCompatActivity() {
      */
     private var lastCoverageWriteAt: Long = 0L
     private val coverageWriteIntervalMs = 1_500L
+
+    companion object {
+        /** Endpoints closer than this are almost certainly an accidental
+         *  double-tap, not a real orchard row. */
+        private const val MIN_ROW_LENGTH_M = 5.0
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,6 +100,7 @@ class DriveModeActivity : AppCompatActivity() {
 
         binding.btnCalibrate.setOnClickListener { onCalibrateButton() }
         binding.btnClearOffset.setOnClickListener { confirmClearOffset() }
+        binding.btnRecordRow.setOnClickListener { onRecordRowButton() }
 
         TagLibrary.ensureInitialized(this)
         tagButtons.forEachIndexed { slot, button ->
@@ -183,6 +203,7 @@ class DriveModeActivity : AppCompatActivity() {
         // rows with the GPS receiver's frame.
         val offset = CalibrationOffset.get(this)
         val corrected = CalibrationOffset.apply(raw.latitude, raw.longitude, offset)
+        currentCorrected = corrected
 
         val state = tracker.update(corrected[0], corrected[1], rows)
         renderTracker(state)
@@ -273,18 +294,137 @@ class DriveModeActivity : AppCompatActivity() {
         vibrator.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
     }
 
+    // ── Row recording ────────────────────────────────────────────────────────
+    //
+    // Rows can be recorded in the field: tap Record Row at one end, drive to
+    // the other end, tap Finish Row, name it. Endpoints are stored in the
+    // *corrected* frame — the same positions the tracker consumes — so a row
+    // recorded here is immediately drivable regardless of any GPS offset, and
+    // rows no longer depend on how well the satellite imagery is geolocated.
+
+    private fun onRecordRowButton() {
+        if (calibrationSession != null) {
+            Toast.makeText(this, "Finish calibration first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val pos = currentCorrected
+        if (pos == null) {
+            Toast.makeText(this, "Waiting for GPS fix…", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val start = rowRecordStart
+        if (start == null) {
+            vibrate()
+            rowRecordStart = pos.copyOf()
+            renderCalibrationStatus()
+        } else {
+            val dist = distanceM(start, pos)
+            if (dist < MIN_ROW_LENGTH_M) {
+                Toast.makeText(
+                    this,
+                    String.format(Locale.US, "Only %.1f m from the start — drive to the far end first", dist),
+                    Toast.LENGTH_SHORT
+                ).show()
+                return
+            }
+            vibrate()
+            promptSaveRecordedRow(start, pos.copyOf(), dist)
+        }
+    }
+
+    private fun promptSaveRecordedRow(start: DoubleArray, end: DoubleArray, lengthM: Double) {
+        val density = resources.displayMetrics.density
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (20 * density).toInt()
+            setPadding(pad, (8 * density).toInt(), pad, 0)
+        }
+        fun field(hint: String, initial: String, decimal: Boolean = false) = EditText(this).apply {
+            this.hint = hint
+            setText(initial)
+            if (decimal) inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            container.addView(this)
+        }
+
+        // Suggest the next sequential name within the most recently touched
+        // block — matches the server web UI's convention.
+        val lastRow = rows.maxByOrNull { it.updatedAt }
+        val suggestedBlock = lastRow?.block ?: ""
+        val inBlock = rows.count { it.block == suggestedBlock }
+        val suggestedWidth = lastRow?.widthM?.takeIf { it > 0 } ?: 3.0
+
+        val nameField = field("Name", "Row ${inBlock + 1}")
+        val blockField = field("Block", suggestedBlock)
+        val widthField = field("Row width (m)", String.format(Locale.US, "%.1f", suggestedWidth), decimal = true)
+
+        AlertDialog.Builder(this)
+            .setTitle(String.format(Locale.US, "Save row (%.0f m)", lengthM))
+            .setView(container)
+            .setPositiveButton("Save") { _, _ ->
+                val name = nameField.text.toString().trim().ifEmpty { "Row ${inBlock + 1}" }
+                saveRecordedRow(name, blockField.text.toString().trim(),
+                    widthField.text.toString().toDoubleOrNull() ?: 0.0, start, end)
+            }
+            // Neutral keeps the start point so an early tap isn't punished —
+            // the operator can keep driving and tap Finish Row again.
+            .setNeutralButton("Keep driving", null)
+            .setNegativeButton("Discard") { _, _ ->
+                rowRecordStart = null
+                renderCalibrationStatus()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun saveRecordedRow(name: String, block: String, widthM: Double,
+                                start: DoubleArray, end: DoubleArray) {
+        rowRecordStart = null
+        renderCalibrationStatus()
+        lifecycleScope.launch {
+            LocationDatabase.getDatabase(this@DriveModeActivity).rowDao().upsert(
+                RowEntity(
+                    uuid     = UUID.randomUUID().toString(),
+                    name     = name,
+                    block    = block,
+                    startLat = start[0],
+                    startLng = start[1],
+                    endLat   = end[0],
+                    endLng   = end[1],
+                    widthM   = widthM,
+                    synced   = false
+                )
+            )
+            runOnUiThread {
+                Toast.makeText(this@DriveModeActivity,
+                    "✓ $name saved — uploads on next sync", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun distanceM(a: DoubleArray, b: DoubleArray): Double {
+        val (e, n) = Geo.toLocalMeters(b[0], b[1], a[0], a[1])
+        return Geo.lengthM(0.0, 0.0, e, n)
+    }
+
     // ── Calibration ──────────────────────────────────────────────────────────
 
     private fun renderCalibrationStatus() {
         val offset = CalibrationOffset.get(this)
         val active = calibrationSession
+        val recStart = rowRecordStart
         binding.tvCalibrationStatus.text = when {
+            recStart != null -> {
+                val dist = currentCorrected?.let { distanceM(recStart, it) } ?: 0.0
+                String.format(Locale.US,
+                    "Recording row: %.0f m from start — tap Finish Row at the far end.", dist)
+            }
             active != null -> "Calibrating: ${active.sampleCount} samples on “${active.rowName()}” — drive end-to-end, then tap Stop."
             offset.enabled && offset.magnitudeM > 0 ->
                 String.format(Locale.US, "GPS offset active: %.2f m", offset.magnitudeM)
             else -> "No GPS offset applied."
         }
         binding.btnCalibrate.text = if (active != null) "Stop calibration" else "Calibrate"
+        binding.btnRecordRow.text = if (recStart != null) "Finish Row" else "Record Row"
     }
 
     private fun CalibrationSession.rowName(): String {
@@ -297,6 +437,10 @@ class DriveModeActivity : AppCompatActivity() {
     private var _calibrationRowName: String? = null
 
     private fun onCalibrateButton() {
+        if (rowRecordStart != null) {
+            Toast.makeText(this, "Finish or discard the row recording first", Toast.LENGTH_SHORT).show()
+            return
+        }
         val active = calibrationSession
         if (active != null) {
             finishCalibration(active)
@@ -309,7 +453,7 @@ class DriveModeActivity : AppCompatActivity() {
         if (rows.isEmpty()) {
             AlertDialog.Builder(this)
                 .setTitle("No rows")
-                .setMessage("Define at least one row on the server first.")
+                .setMessage("Record a row here with Record Row, or define one on the server first.")
                 .setPositiveButton("OK", null)
                 .show()
             return
