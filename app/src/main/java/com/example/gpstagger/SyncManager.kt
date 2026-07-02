@@ -54,6 +54,11 @@ object SyncManager {
         // the next successful sync pushes them to the server.
         val unsyncedRows = rowDao.getUnsynced()
 
+        // Coverage spans, so the web map can show task progress. Separate
+        // channel from row definitions: each side merges LWW on
+        // coverage_updated_at.
+        val coverageChanged = rowDao.getTouchedCoverage()
+
         // Build sync request — include tombstones as deleted locations
         val allLocations = locationsToJson(unsynced)
         pendingDeletions.forEach { tombstone ->
@@ -89,6 +94,7 @@ object SyncManager {
             put("tags", allTags)
             put("slots", slotsToJson(ctx, slots))
             put("rows", rowsToJson(unsyncedRows))
+            put("coverage", coverageToJson(coverageChanged))
         }
 
         val response = try {
@@ -221,12 +227,25 @@ object SyncManager {
                     updatedAt = incomingUpdated,
                     deleted   = r.optBoolean("deleted", false),
                     synced    = true,
-                    // Coverage is a local-only property — preserve whatever
-                    // the operator has driven so far when the server pushes
-                    // a row definition update.
+                    // A row *definition* update must not clobber the driven
+                    // state — coverage rides its own LWW channel below.
                     coverageMinT = existing?.coverageMinT,
-                    coverageMaxT = existing?.coverageMaxT
+                    coverageMaxT = existing?.coverageMaxT,
+                    coverageUpdatedAt = existing?.coverageUpdatedAt ?: 0
                 )
+            )
+        }
+
+        // Apply incoming coverage (LWW guard lives in the DAO query). Our own
+        // just-pushed spans echo back with an equal timestamp and no-op.
+        val incomingCoverage = json.optJSONArray("coverage") ?: JSONArray()
+        for (i in 0 until incomingCoverage.length()) {
+            val c = incomingCoverage.getJSONObject(i)
+            rowDao.applyCoverage(
+                uuid      = c.getString("row_uuid"),
+                minT      = if (c.isNull("min_t")) null else c.getDouble("min_t"),
+                maxT      = if (c.isNull("max_t")) null else c.getDouble("max_t"),
+                updatedAt = c.getLong("updated_at")
             )
         }
 
@@ -280,6 +299,19 @@ object SyncManager {
                 put("slot", slot)
                 put("tag_id", tagId ?: "")
                 put("updated_at", TagLibrary.getSlotUpdatedAt(ctx, slot))
+            })
+        }
+        return arr
+    }
+
+    private fun coverageToJson(rows: List<RowEntity>): JSONArray {
+        val arr = JSONArray()
+        rows.forEach { r ->
+            arr.put(JSONObject().apply {
+                put("row_uuid", r.uuid)
+                put("min_t", r.coverageMinT ?: JSONObject.NULL)
+                put("max_t", r.coverageMaxT ?: JSONObject.NULL)
+                put("updated_at", r.coverageUpdatedAt)
             })
         }
         return arr

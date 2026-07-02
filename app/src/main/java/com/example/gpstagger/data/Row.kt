@@ -29,11 +29,14 @@ data class RowEntity(
      * derived span `max - min` is what determines whether the row counts as
      * covered (see [coverageState]).
      *
-     * These are local-only — coverage is a property of an in-progress task
-     * for this operator, not something the server cares about.
+     * Coverage syncs to the server (last-write-wins on [coverageUpdatedAt],
+     * independent of the row definition's [updatedAt]) so progress is visible
+     * on the web map. With one tractor active that is exact; with several,
+     * the most recent reporter wins.
      */
     @ColumnInfo(name = "coverage_min_t") val coverageMinT: Double? = null,
-    @ColumnInfo(name = "coverage_max_t") val coverageMaxT: Double? = null
+    @ColumnInfo(name = "coverage_max_t") val coverageMaxT: Double? = null,
+    @ColumnInfo(name = "coverage_updated_at") val coverageUpdatedAt: Long = 0
 ) {
     fun coverageState(coveredThreshold: Double = 0.9, partialThreshold: Double = 0.1): Coverage {
         val mn = coverageMinT

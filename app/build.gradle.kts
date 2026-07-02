@@ -19,8 +19,8 @@ android {
         applicationId = "com.example.gpstagger"
         minSdk = 26
         targetSdk = 34
-        versionCode = 14
-        versionName = "1.6.0"
+        versionCode = 15
+        versionName = "1.7.0"
     }
 
     buildFeatures {
@@ -85,4 +85,7 @@ dependencies {
     // USB serial — for external USB GPS receivers that emit NMEA 0183 over
     // a USB-serial bridge (CDC-ACM, FTDI, CP210x, CH34x, PL2303, etc.).
     implementation("com.github.mik3y:usb-serial-for-android:3.7.2")
+
+    // JVM unit tests (Geo / RowTracker are pure logic, no Android deps)
+    testImplementation("junit:junit:4.13.2")
 }

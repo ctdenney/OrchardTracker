@@ -54,6 +54,14 @@ class DriveModeActivity : AppCompatActivity() {
      *  row, or null when not recording. */
     private var rowRecordStart: DoubleArray? = null
 
+    /**
+     * Turn-around marks for serpentine block recording, or null when not in
+     * block mode. Marks m0..mN define rows (m0,m1), (m1,m2), … — each tap
+     * simultaneously ends one row and starts the next, so a whole block is
+     * one tap per turn-around.
+     */
+    private var blockMarks: MutableList<DoubleArray>? = null
+
     private val tagButtons: List<Button> by lazy {
         listOf(
             binding.btnStart, binding.btnEnd, binding.btnObstacle,
@@ -101,6 +109,7 @@ class DriveModeActivity : AppCompatActivity() {
         binding.btnCalibrate.setOnClickListener { onCalibrateButton() }
         binding.btnClearOffset.setOnClickListener { confirmClearOffset() }
         binding.btnRecordRow.setOnClickListener { onRecordRowButton() }
+        binding.btnRecordRow.setOnLongClickListener { onRecordRowLongPress(); true }
 
         TagLibrary.ensureInitialized(this)
         tagButtons.forEachIndexed { slot, button ->
@@ -148,8 +157,19 @@ class DriveModeActivity : AppCompatActivity() {
         return true
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        val inBlock = blockMarks != null
+        menu.findItem(R.id.action_record_block).isVisible = !inBlock
+        menu.findItem(R.id.action_finish_block).isVisible = inBlock
+        menu.findItem(R.id.action_discard_block).isVisible = inBlock
+        return super.onPrepareOptionsMenu(menu)
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_record_block   -> { startBlockRecording(); true }
+            R.id.action_finish_block   -> { finishBlockRecording(); true }
+            R.id.action_discard_block  -> { confirmDiscardBlock(); true }
             R.id.action_reset_coverage -> { confirmResetCoverage(); true }
             else -> super.onOptionsItemSelected(item)
         }
@@ -312,6 +332,10 @@ class DriveModeActivity : AppCompatActivity() {
             Toast.makeText(this, "Waiting for GPS fix…", Toast.LENGTH_SHORT).show()
             return
         }
+        if (blockMarks != null) {
+            markTurn(pos)
+            return
+        }
         val start = rowRecordStart
         if (start == null) {
             vibrate()
@@ -406,13 +430,172 @@ class DriveModeActivity : AppCompatActivity() {
         return Geo.lengthM(0.0, 0.0, e, n)
     }
 
+    // ── Serpentine block recording ───────────────────────────────────────────
+    //
+    // Recording rows one at a time costs two taps plus a dialog per row.
+    // Rows are driven in a serpentine anyway, so in block mode each tap at a
+    // turn-around ends the current row and starts the next; one dialog at the
+    // end names the whole block with sequential row numbers.
+
+    private fun onRecordRowLongPress() {
+        when {
+            blockMarks != null        -> finishBlockRecording()
+            rowRecordStart != null    ->
+                Toast.makeText(this, "Finish or discard the single row first", Toast.LENGTH_SHORT).show()
+            calibrationSession != null ->
+                Toast.makeText(this, "Finish calibration first", Toast.LENGTH_SHORT).show()
+            else                      -> startBlockRecording()
+        }
+    }
+
+    private fun startBlockRecording() {
+        if (rowRecordStart != null || calibrationSession != null) {
+            Toast.makeText(this, "Finish the current recording first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        blockMarks = mutableListOf()
+        invalidateOptionsMenu()
+        renderCalibrationStatus()
+        Toast.makeText(this, "Block mode: tap Mark Turn at the start of the first row", Toast.LENGTH_LONG).show()
+    }
+
+    private fun markTurn(pos: DoubleArray) {
+        val marks = blockMarks ?: return
+        val last = marks.lastOrNull()
+        if (last != null) {
+            val dist = distanceM(last, pos)
+            if (dist < MIN_ROW_LENGTH_M) {
+                Toast.makeText(
+                    this,
+                    String.format(Locale.US, "Only %.1f m since the last mark — ignored", dist),
+                    Toast.LENGTH_SHORT
+                ).show()
+                return
+            }
+        }
+        vibrate()
+        marks.add(pos.copyOf())
+        renderCalibrationStatus()
+    }
+
+    private fun finishBlockRecording() {
+        val marks = blockMarks ?: return
+        if (marks.size < 2) {
+            Toast.makeText(this, "Need at least two marks (one row) — keep driving", Toast.LENGTH_SHORT).show()
+            return
+        }
+        promptSaveBlock(marks.toList())
+    }
+
+    private fun confirmDiscardBlock() {
+        val marks = blockMarks ?: return
+        AlertDialog.Builder(this)
+            .setTitle("Discard block?")
+            .setMessage("Throws away ${marks.size} marks without saving any rows.")
+            .setPositiveButton("Discard") { _, _ ->
+                blockMarks = null
+                invalidateOptionsMenu()
+                renderCalibrationStatus()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun promptSaveBlock(marks: List<DoubleArray>) {
+        val density = resources.displayMetrics.density
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (20 * density).toInt()
+            setPadding(pad, (8 * density).toInt(), pad, 0)
+        }
+        fun field(hint: String, initial: String, decimal: Boolean = false) = EditText(this).apply {
+            this.hint = hint
+            setText(initial)
+            if (decimal) inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            container.addView(this)
+        }
+
+        val lastRow = rows.maxByOrNull { it.updatedAt }
+        val suggestedBlock = lastRow?.block ?: ""
+        val suggestedWidth = lastRow?.widthM?.takeIf { it > 0 } ?: 3.0
+        val suggestedFirst = rows.count { it.block == suggestedBlock } + 1
+
+        val blockField = field("Block", suggestedBlock)
+        val firstField = field("First row number", suggestedFirst.toString(), decimal = true)
+        val widthField = field("Row width (m)", String.format(Locale.US, "%.1f", suggestedWidth), decimal = true)
+
+        val rowCount = marks.size - 1
+        AlertDialog.Builder(this)
+            .setTitle("Save block ($rowCount rows)")
+            .setView(container)
+            .setPositiveButton("Save") { _, _ ->
+                val firstNum = firstField.text.toString().toIntOrNull() ?: 1
+                saveBlock(
+                    marks,
+                    blockField.text.toString().trim(),
+                    firstNum,
+                    widthField.text.toString().toDoubleOrNull() ?: 0.0
+                )
+            }
+            // Keep the marks so the operator can keep driving more rows.
+            .setNeutralButton("Keep driving", null)
+            .setNegativeButton("Discard") { _, _ ->
+                blockMarks = null
+                invalidateOptionsMenu()
+                renderCalibrationStatus()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun saveBlock(marks: List<DoubleArray>, block: String, firstNum: Int, widthM: Double) {
+        blockMarks = null
+        invalidateOptionsMenu()
+        renderCalibrationStatus()
+        val rowCount = marks.size - 1
+        lifecycleScope.launch {
+            val dao = LocationDatabase.getDatabase(this@DriveModeActivity).rowDao()
+            for (i in 0 until rowCount) {
+                dao.upsert(
+                    RowEntity(
+                        uuid     = UUID.randomUUID().toString(),
+                        name     = "Row ${firstNum + i}",
+                        block    = block,
+                        startLat = marks[i][0],
+                        startLng = marks[i][1],
+                        endLat   = marks[i + 1][0],
+                        endLng   = marks[i + 1][1],
+                        widthM   = widthM,
+                        synced   = false
+                    )
+                )
+            }
+            runOnUiThread {
+                Toast.makeText(this@DriveModeActivity,
+                    "✓ $rowCount rows saved — upload on next sync", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     // ── Calibration ──────────────────────────────────────────────────────────
 
     private fun renderCalibrationStatus() {
         val offset = CalibrationOffset.get(this)
         val active = calibrationSession
         val recStart = rowRecordStart
+        val marks = blockMarks
         binding.tvCalibrationStatus.text = when {
+            marks != null -> {
+                val dist = marks.lastOrNull()?.let { last ->
+                    currentCorrected?.let { distanceM(last, it) }
+                }
+                when {
+                    marks.isEmpty() -> "Block mode: tap Mark Turn at the start of the first row."
+                    else -> String.format(Locale.US,
+                        "Block: %d rows marked, %.0f m since last mark — long-press to finish.",
+                        marks.size - 1, dist ?: 0.0)
+                }
+            }
             recStart != null -> {
                 val dist = currentCorrected?.let { distanceM(recStart, it) } ?: 0.0
                 String.format(Locale.US,
@@ -424,7 +607,11 @@ class DriveModeActivity : AppCompatActivity() {
             else -> "No GPS offset applied."
         }
         binding.btnCalibrate.text = if (active != null) "Stop calibration" else "Calibrate"
-        binding.btnRecordRow.text = if (recStart != null) "Finish Row" else "Record Row"
+        binding.btnRecordRow.text = when {
+            marks != null    -> "Mark Turn (${marks.size})"
+            recStart != null -> "Finish Row"
+            else             -> "Record Row"
+        }
     }
 
     private fun CalibrationSession.rowName(): String {
@@ -437,7 +624,7 @@ class DriveModeActivity : AppCompatActivity() {
     private var _calibrationRowName: String? = null
 
     private fun onCalibrateButton() {
-        if (rowRecordStart != null) {
+        if (rowRecordStart != null || blockMarks != null) {
             Toast.makeText(this, "Finish or discard the row recording first", Toast.LENGTH_SHORT).show()
             return
         }

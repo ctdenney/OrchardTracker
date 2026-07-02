@@ -3,6 +3,23 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_record_block"
+        android:title="Record Block (Serpentine)"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_finish_block"
+        android:title="Finish Block"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_discard_block"
+        android:title="Discard Block"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/action_reset_coverage"
         android:title="Reset Row Coverage"
         app:showAsAction="never" />
