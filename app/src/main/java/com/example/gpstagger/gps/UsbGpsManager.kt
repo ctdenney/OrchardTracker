@@ -9,6 +9,8 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.location.Location
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
@@ -25,6 +27,12 @@ import java.util.concurrent.Executors
  * The class is intentionally self-contained: callers don't need to know
  * anything about USB or NMEA — they just register a listener and call
  * [start] / [stop].
+ *
+ * Listener callbacks are always delivered on the main thread. Between [start]
+ * and [stop] the manager keeps itself alive: if no device is attached yet, if
+ * the port can't be opened (e.g. the previous activity's teardown is still
+ * releasing its claim during an activity handoff), or if the read loop dies
+ * mid-stream, it retries every [RETRY_DELAY_MS] until [stop] is called.
  */
 class UsbGpsManager(
     private val appContext: Context,
@@ -41,26 +49,49 @@ class UsbGpsManager(
 
     private val usbManager = appContext.getSystemService(Context.USB_SERVICE) as UsbManager
     private val executor = Executors.newSingleThreadExecutor()
-    private val parser = NmeaParser { loc -> listener.onLocation(loc) }
+    private val mainHandler = Handler(Looper.getMainLooper())
+    // NMEA fixes arrive on the serial IO thread; hop to main before the
+    // listener sees them so activities can touch views directly.
+    private val parser = NmeaParser { loc -> mainHandler.post { listener.onLocation(loc) } }
 
     private var port: UsbSerialPort? = null
     private var ioManager: SerialInputOutputManager? = null
     private var permissionReceiver: BroadcastReceiver? = null
     private var status: Status = Status.DISCONNECTED
 
+    /** True between [start] and [stop] — gates the reconnect loop. */
+    private var wantRunning = false
+
+    private val retryRunnable = Runnable { if (wantRunning) connect() }
+
     /**
-     * Try to attach to the first supported USB-serial device. Idempotent:
-     * calling while already connected is a no-op.
+     * Begin (and keep) trying to attach to the first supported USB-serial
+     * device. Idempotent: calling while already connected is a no-op.
      */
     fun start() {
-        if (status == Status.CONNECTED) return
+        wantRunning = true
+        connect()
+    }
+
+    /** Tear down the port, IO manager, retry loop, and any pending permission receiver. */
+    fun stop() {
+        wantRunning = false
+        mainHandler.removeCallbacks(retryRunnable)
+        teardown()
+        updateStatus(Status.DISCONNECTED)
+    }
+
+    fun currentStatus(): Status = status
+
+    private fun connect() {
+        if (status == Status.CONNECTED || status == Status.AWAITING_PERMISSION) return
         val drivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
         if (drivers.isEmpty()) {
             updateStatus(Status.NO_DEVICE, "No USB GPS attached")
+            scheduleRetry()
             return
         }
-        val driver = drivers.first()
-        val device = driver.device
+        val device = drivers.first().device
 
         if (!usbManager.hasPermission(device)) {
             requestPermission(device)
@@ -69,8 +100,13 @@ class UsbGpsManager(
         openDevice(device)
     }
 
-    /** Tear down the port, IO manager, and any pending permission receiver. */
-    fun stop() {
+    private fun scheduleRetry() {
+        if (!wantRunning) return
+        mainHandler.removeCallbacks(retryRunnable)
+        mainHandler.postDelayed(retryRunnable, RETRY_DELAY_MS)
+    }
+
+    private fun teardown() {
         try {
             ioManager?.stop()
         } catch (_: Exception) { /* already stopped */ }
@@ -87,10 +123,7 @@ class UsbGpsManager(
             } catch (_: IllegalArgumentException) { /* not registered */ }
         }
         permissionReceiver = null
-        updateStatus(Status.DISCONNECTED)
     }
-
-    fun currentStatus(): Status = status
 
     // ── Permission flow ──────────────────────────────────────────────────────
 
@@ -122,6 +155,9 @@ class UsbGpsManager(
                 if (granted && dev != null) {
                     openDevice(dev)
                 } else {
+                    // No retry here — a timer-driven reconnect would re-pop the
+                    // permission dialog. The next start() (activity resume)
+                    // asks again.
                     updateStatus(Status.ERROR, "USB permission denied")
                 }
             }
@@ -144,14 +180,17 @@ class UsbGpsManager(
             .probeDevice(device)
             ?: run {
                 updateStatus(Status.ERROR, "No driver for ${device.productName ?: device.deviceName}")
+                scheduleRetry()
                 return
             }
         val connection = usbManager.openDevice(driver.device) ?: run {
             updateStatus(Status.ERROR, "Could not open USB device")
+            scheduleRetry()
             return
         }
         val newPort = driver.ports.firstOrNull() ?: run {
             updateStatus(Status.ERROR, "Device has no serial ports")
+            scheduleRetry()
             return
         }
         try {
@@ -165,6 +204,7 @@ class UsbGpsManager(
             Log.w(TAG, "Failed to open USB GPS port", e)
             try { newPort.close() } catch (_: Exception) {}
             updateStatus(Status.ERROR, e.message ?: "Port open failed")
+            scheduleRetry()
             return
         }
 
@@ -173,9 +213,17 @@ class UsbGpsManager(
                 parser.feed(data, data.size)
             }
             override fun onRunError(e: Exception) {
+                // Called on the serial IO thread. A read error is not fatal —
+                // it's typically the port being yanked out from under us
+                // (device unplug, or a stale claim during an activity
+                // handoff). Tear down and let the retry loop reconnect.
                 Log.w(TAG, "USB GPS read error", e)
-                listener.onStatus(Status.ERROR, e.message ?: "Read error")
-                stop()
+                mainHandler.post {
+                    if (!wantRunning) return@post
+                    teardown()
+                    updateStatus(Status.ERROR, "${e.message ?: "Read error"} — reconnecting…")
+                    scheduleRetry()
+                }
             }
         })
         executor.submit(io)
@@ -193,5 +241,6 @@ class UsbGpsManager(
     companion object {
         private const val TAG = "UsbGpsManager"
         private const val ACTION_USB_PERMISSION = "com.example.gpstagger.USB_PERMISSION"
+        private const val RETRY_DELAY_MS = 3_000L
     }
 }

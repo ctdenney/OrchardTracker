@@ -100,6 +100,9 @@ class LocationSource(private val context: Context) {
     }
 
     private fun startUsb() {
+        // Reuse a live manager — creating a second one would orphan the first
+        // with the port still open.
+        usb?.let { it.start(); return }
         val baud = GpsPrefs.baudRate(context)
         val manager = UsbGpsManager(context.applicationContext, baud, usbListener)
         usb = manager

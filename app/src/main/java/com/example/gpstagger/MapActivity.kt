@@ -34,6 +34,11 @@ import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
 class MapActivity : AppCompatActivity() {
 
+    companion object {
+        private const val MAP_PREFS = "map_prefs"
+        private const val KEY_ROWS_VISIBLE = "rows_visible"
+    }
+
     private lateinit var binding: ActivityMapBinding
     private lateinit var db: LocationDatabase
     private lateinit var myLocationOverlay: MyLocationNewOverlay
@@ -53,6 +58,11 @@ class MapActivity : AppCompatActivity() {
     /** Row polylines currently rendered on the map, keyed by row UUID. */
     private val rowPolylines = mutableMapOf<String, Polyline>()
     private var rowsVisible: Boolean = true
+        set(value) {
+            field = value
+            getSharedPreferences(MAP_PREFS, MODE_PRIVATE)
+                .edit().putBoolean(KEY_ROWS_VISIBLE, value).apply()
+        }
     private var lastRows: List<RowEntity> = emptyList()
 
     /**
@@ -80,6 +90,8 @@ class MapActivity : AppCompatActivity() {
         }
 
         db = LocationDatabase.getDatabase(this)
+        rowsVisible = getSharedPreferences(MAP_PREFS, MODE_PRIVATE)
+            .getBoolean(KEY_ROWS_VISIBLE, true)
         setupMap()
         loadLocations()
         loadRows()
