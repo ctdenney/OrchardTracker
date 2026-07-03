@@ -19,8 +19,8 @@ android {
         applicationId = "com.example.gpstagger"
         minSdk = 26
         targetSdk = 34
-        versionCode = 16
-        versionName = "1.7.1"
+        versionCode = 17
+        versionName = "1.7.2"
     }
 
     buildFeatures {

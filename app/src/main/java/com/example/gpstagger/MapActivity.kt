@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -83,6 +84,9 @@ class MapActivity : AppCompatActivity() {
 
         binding = ActivityMapBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // Field use: the map is often consulted hands-free while walking a
+        // row — don't let the screen time out, same as tagging & drive mode.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         supportActionBar?.apply {
             setDisplayHomeAsUpEnabled(true)
