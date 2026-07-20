@@ -17,6 +17,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.gpstagger.data.LocationDatabase
+import com.example.gpstagger.data.ResumePointEntity
 import com.example.gpstagger.data.RowEntity
 import com.example.gpstagger.data.TaggedLocation
 import com.example.gpstagger.databinding.ActivityDriveModeBinding
@@ -42,6 +43,10 @@ class DriveModeActivity : AppCompatActivity() {
     private lateinit var locationSource: LocationSource
     private val tracker = RowTracker()
     private var rows: List<RowEntity> = emptyList()
+
+    /** Most recent tracker opinion, so "mark tank end" can record which row
+     *  and how far along it the operator was when the tank ran out. */
+    private var latestState: RowTracker.State? = null
 
     /** Latest raw fix used both for tag recording and for tracker input. */
     private var currentLocation: Location? = null
@@ -170,6 +175,7 @@ class DriveModeActivity : AppCompatActivity() {
             R.id.action_record_block   -> { startBlockRecording(); true }
             R.id.action_finish_block   -> { finishBlockRecording(); true }
             R.id.action_discard_block  -> { confirmDiscardBlock(); true }
+            R.id.action_mark_tank_end  -> { markTankEnd(); true }
             R.id.action_reset_coverage -> { confirmResetCoverage(); true }
             else -> super.onOptionsItemSelected(item)
         }
@@ -226,6 +232,7 @@ class DriveModeActivity : AppCompatActivity() {
         currentCorrected = corrected
 
         val state = tracker.update(corrected[0], corrected[1], rows)
+        latestState = state
         renderTracker(state)
 
         // Persist coverage progress for the locked row. We throttle these
@@ -244,6 +251,45 @@ class DriveModeActivity : AppCompatActivity() {
         }
 
         renderCalibrationStatus()
+    }
+
+    /**
+     * Drop a resume point at the current position — where a tank ran empty —
+     * so it's easy to drive back and pick up with the next tank. Records the
+     * locked row and along-row fraction as context when the tracker has one.
+     * Syncs to the server (and the web map) on the next sync; several can be
+     * open at once.
+     */
+    private fun markTankEnd() {
+        val pos = currentCorrected
+        if (pos == null) {
+            Toast.makeText(this, "No GPS fix yet", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val state = latestState
+        val rowUuid = state?.row?.uuid ?: ""
+        val rowT = state?.row?.let { state.alongFraction.coerceIn(0.0, 1.0) }
+        val now = System.currentTimeMillis()
+        val stamp = java.text.SimpleDateFormat("MMM d HH:mm", Locale.US).format(java.util.Date(now))
+        val point = ResumePointEntity(
+            uuid = UUID.randomUUID().toString(),
+            latitude = pos[0],
+            longitude = pos[1],
+            label = "Tank end $stamp",
+            rowUuid = rowUuid,
+            rowT = rowT,
+            createdAt = now,
+            updatedAt = now,
+            deleted = false,
+            synced = false
+        )
+        lifecycleScope.launch {
+            LocationDatabase.getDatabase(this@DriveModeActivity).resumePointDao().upsert(point)
+        }
+        val where = state?.row?.let {
+            " on ${it.name} (~${(rowT ?: 0.0).times(100).toInt()}%)"
+        } ?: ""
+        Toast.makeText(this, "Marked tank end$where", Toast.LENGTH_SHORT).show()
     }
 
     private fun renderTracker(state: RowTracker.State) {

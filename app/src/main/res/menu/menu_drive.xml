@@ -20,6 +20,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/action_mark_tank_end"
+        android:title="Mark Tank End Here"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/action_reset_coverage"
         android:title="Reset Row Coverage"
         app:showAsAction="never" />

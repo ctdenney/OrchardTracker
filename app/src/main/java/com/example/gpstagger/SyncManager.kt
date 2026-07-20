@@ -2,6 +2,7 @@ package com.example.gpstagger
 
 import android.content.Context
 import com.example.gpstagger.data.LocationDatabase
+import com.example.gpstagger.data.ResumePointEntity
 import com.example.gpstagger.data.RowEntity
 import com.example.gpstagger.data.TaggedLocation
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,7 @@ object SyncManager {
         val db = LocationDatabase.getDatabase(ctx)
         val dao = db.locationDao()
         val rowDao = db.rowDao()
+        val resumeDao = db.resumePointDao()
         val deviceId = SyncConfig.getDeviceId(ctx)
         val lastSync = SyncConfig.getLastSyncAt(ctx)
 
@@ -58,6 +60,9 @@ object SyncManager {
         // channel from row definitions: each side merges LWW on
         // coverage_updated_at.
         val coverageChanged = rowDao.getTouchedCoverage()
+
+        // Resume points dropped in Drive Mode (and local clears) until synced.
+        val unsyncedResumePoints = resumeDao.getUnsynced()
 
         // Build sync request — include tombstones as deleted locations
         val allLocations = locationsToJson(unsynced)
@@ -95,6 +100,7 @@ object SyncManager {
             put("slots", slotsToJson(ctx, slots))
             put("rows", rowsToJson(unsyncedRows))
             put("coverage", coverageToJson(coverageChanged))
+            put("resume_points", resumePointsToJson(unsyncedResumePoints))
         }
 
         val response = try {
@@ -249,9 +255,38 @@ object SyncManager {
             )
         }
 
+        // Apply incoming resume points (LWW on updated_at; soft deletes stay in
+        // the table as tombstones and are filtered out of the active views).
+        val incomingResume = json.optJSONArray("resume_points") ?: JSONArray()
+        for (i in 0 until incomingResume.length()) {
+            val p = incomingResume.getJSONObject(i)
+            val uuid = p.getString("uuid")
+            val incomingUpdated = p.getLong("updated_at")
+            val existing = resumeDao.getByUuid(uuid)
+            if (existing != null && existing.updatedAt >= incomingUpdated) continue
+            resumeDao.upsert(
+                ResumePointEntity(
+                    uuid      = uuid,
+                    latitude  = p.getDouble("latitude"),
+                    longitude = p.getDouble("longitude"),
+                    label     = p.optString("label", ""),
+                    rowUuid   = p.optString("row_uuid", ""),
+                    rowT      = if (p.isNull("row_t")) null else p.optDouble("row_t"),
+                    createdAt = p.optLong("created_at", incomingUpdated),
+                    updatedAt = incomingUpdated,
+                    deleted   = p.optBoolean("deleted", false),
+                    synced    = true
+                )
+            )
+            pulled++
+        }
+
         // Mark our pushed rows as synced
         if (unsyncedRows.isNotEmpty()) {
             rowDao.markSynced(unsyncedRows.map { it.uuid })
+        }
+        if (unsyncedResumePoints.isNotEmpty()) {
+            resumeDao.markSynced(unsyncedResumePoints.map { it.uuid })
         }
 
         SyncConfig.setLastSyncAt(ctx, serverTime)
@@ -312,6 +347,24 @@ object SyncManager {
                 put("min_t", r.coverageMinT ?: JSONObject.NULL)
                 put("max_t", r.coverageMaxT ?: JSONObject.NULL)
                 put("updated_at", r.coverageUpdatedAt)
+            })
+        }
+        return arr
+    }
+
+    private fun resumePointsToJson(points: List<ResumePointEntity>): JSONArray {
+        val arr = JSONArray()
+        points.forEach { p ->
+            arr.put(JSONObject().apply {
+                put("uuid", p.uuid)
+                put("latitude", p.latitude)
+                put("longitude", p.longitude)
+                put("label", p.label)
+                put("row_uuid", p.rowUuid)
+                put("row_t", p.rowT ?: JSONObject.NULL)
+                put("created_at", p.createdAt)
+                put("updated_at", p.updatedAt)
+                put("deleted", p.deleted)
             })
         }
         return arr

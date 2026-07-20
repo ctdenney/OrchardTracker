@@ -8,14 +8,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [TaggedLocation::class, DeletedLocation::class, RowEntity::class],
-    version = 7,
+    entities = [TaggedLocation::class, DeletedLocation::class, RowEntity::class, ResumePointEntity::class],
+    version = 8,
     exportSchema = false
 )
 abstract class LocationDatabase : RoomDatabase() {
 
     abstract fun locationDao(): LocationDao
     abstract fun rowDao(): RowDao
+    abstract fun resumePointDao(): ResumePointDao
 
     companion object {
         @Volatile
@@ -96,6 +97,26 @@ abstract class LocationDatabase : RoomDatabase() {
             }
         }
 
+        /** v7 -> v8: adds resume_points (mid-row tank-end marks). */
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS resume_points (
+                        uuid TEXT NOT NULL PRIMARY KEY,
+                        latitude REAL NOT NULL,
+                        longitude REAL NOT NULL,
+                        label TEXT NOT NULL DEFAULT '',
+                        row_uuid TEXT NOT NULL DEFAULT '',
+                        row_t REAL,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        deleted INTEGER NOT NULL DEFAULT 0,
+                        synced INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun getDatabase(context: Context): LocationDatabase =
             INSTANCE ?: synchronized(this) {
                 Room.databaseBuilder(
@@ -103,7 +124,7 @@ abstract class LocationDatabase : RoomDatabase() {
                     LocationDatabase::class.java,
                     "gps_tagger_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     .build()
                     .also { INSTANCE = it }
             }

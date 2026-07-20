@@ -22,6 +22,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.gpstagger.data.LocationDatabase
+import com.example.gpstagger.data.ResumePointEntity
 import com.example.gpstagger.data.RowEntity
 import com.example.gpstagger.data.TaggedLocation
 import com.example.gpstagger.databinding.ActivityMapBinding
@@ -65,6 +66,9 @@ class MapActivity : AppCompatActivity() {
                 .edit().putBoolean(KEY_ROWS_VISIBLE, value).apply()
         }
     private var lastRows: List<RowEntity> = emptyList()
+
+    /** Resume points (tank-end marks) to draw as flags. */
+    private var resumePoints: List<ResumePointEntity> = emptyList()
 
     /**
      * Whether we've already done the one-time auto-centre on the saved
@@ -223,7 +227,33 @@ class MapActivity : AppCompatActivity() {
             binding.mapView.overlays.add(marker)
         }
 
+        // Resume points on top, as default pins so they stand out from the
+        // tag circles. Tapping one offers to clear it.
+        resumePoints.forEach { rp ->
+            val marker = Marker(binding.mapView).apply {
+                position = GeoPoint(rp.latitude, rp.longitude)
+                title    = rp.label.ifEmpty { "Resume point" }
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                setOnMarkerClickListener { _, _ ->
+                    showResumePointDialog(rp)
+                    true
+                }
+            }
+            binding.mapView.overlays.add(marker)
+        }
+
         binding.mapView.invalidate()
+    }
+
+    private fun showResumePointDialog(rp: ResumePointEntity) {
+        AlertDialog.Builder(this)
+            .setTitle(rp.label.ifEmpty { "Resume point" })
+            .setMessage("Where a tank ended. Clear it once you've picked back up here.")
+            .setPositiveButton("Clear") { _, _ ->
+                lifecycleScope.launch { db.resumePointDao().softDelete(rp.uuid) }
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     // ── Row rendering & coverage ──────────────────────────────────────────────
@@ -232,6 +262,10 @@ class MapActivity : AppCompatActivity() {
         db.rowDao().observeActive().observe(this) { latest ->
             lastRows = latest ?: emptyList()
             renderRows()
+        }
+        db.resumePointDao().observeActive().observe(this) { latest ->
+            resumePoints = latest ?: emptyList()
+            refreshMarkers()
         }
     }
 
