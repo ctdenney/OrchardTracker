@@ -29,6 +29,7 @@ import com.example.gpstagger.databinding.ActivityMapBinding
 import com.example.gpstagger.gps.LocationSourceMyLocationProvider
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
+import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
@@ -39,6 +40,12 @@ class MapActivity : AppCompatActivity() {
     companion object {
         private const val MAP_PREFS = "map_prefs"
         private const val KEY_ROWS_VISIBLE = "rows_visible"
+        private const val KEY_LOCK_ORCHARD = "lock_orchard"
+
+        /** The Esri zoom that lines up with the ground (see the server's z20
+         *  pin). Locking the map here keeps imagery and markers registered;
+         *  osmdroid can't scale below a source's zoom, so this is a floor. */
+        private const val REGISTERED_ZOOM = 20.0
     }
 
     private lateinit var binding: ActivityMapBinding
@@ -69,6 +76,10 @@ class MapActivity : AppCompatActivity() {
 
     /** Resume points (tank-end marks) to draw as flags. */
     private var resumePoints: List<ResumePointEntity> = emptyList()
+
+    /** When true, the map is pinned to the registered zoom and panning is
+     *  constrained to the orchard boundary. */
+    private var lockedToOrchard = false
 
     /**
      * Whether we've already done the one-time auto-centre on the saved
@@ -163,12 +174,86 @@ class MapActivity : AppCompatActivity() {
 
         binding.mapView.overlays.add(myLocationOverlay)
         binding.mapView.overlays.add(areaSelectionOverlay)
+
+        // Restore the orchard lock if it was left on. Skip re-centering so a
+        // restored viewport inside the orchard is preserved.
+        lockedToOrchard = getSharedPreferences(MAP_PREFS, MODE_PRIVATE)
+            .getBoolean(KEY_LOCK_ORCHARD, false)
+        if (lockedToOrchard) applyOrchardLock(true, recenter = false)
     }
 
     private fun applyTileSource() {
         binding.mapView.setTileSource(TileSources.saved(this))
         binding.mapView.invalidate()
         invalidateOptionsMenu()
+    }
+
+    /**
+     * Pin the map to the registered zoom ([REGISTERED_ZOOM]) and constrain
+     * panning to the orchard boundary, mirroring the web map. osmdroid can't
+     * scale tiles below a source's zoom, so this floors the zoom at 20 (the
+     * misregistered lower zooms are exactly what we're avoiding) rather than
+     * allowing free zoom-out.
+     */
+    private fun applyOrchardLock(enabled: Boolean, recenter: Boolean = true) {
+        lockedToOrchard = enabled
+        getSharedPreferences(MAP_PREFS, MODE_PRIVATE)
+            .edit().putBoolean(KEY_LOCK_ORCHARD, enabled).apply()
+
+        val map = binding.mapView
+        if (!enabled) {
+            map.setScrollableAreaLimitDouble(null)
+            map.minZoomLevel = 2.0
+            map.maxZoomLevel = TileSources.MAX_ZOOM.toDouble()
+            map.invalidate()
+            return
+        }
+
+        // The registered imagery is the satellite layer; switch to it.
+        if (!TileSources.isEsriSelected(this)) {
+            TileSources.saveSelection(this, true)
+            applyTileSource()
+        }
+        map.minZoomLevel = REGISTERED_ZOOM
+        map.maxZoomLevel = TileSources.MAX_ZOOM.toDouble()
+        if (map.zoomLevelDouble < REGISTERED_ZOOM) map.controller.setZoom(REGISTERED_ZOOM)
+
+        applyOrchardScrollLimit(OrchardBounds.cached(this) ?: rowsBoundingBox(), recenter)
+        map.invalidate()
+
+        // Refresh the boundary from the server in the background; apply it if
+        // the lock is still on when it arrives.
+        lifecycleScope.launch {
+            val fresh = OrchardBounds.fetch(this@MapActivity)
+            if (fresh != null && lockedToOrchard) applyOrchardScrollLimit(fresh, recenter = false)
+        }
+    }
+
+    private fun applyOrchardScrollLimit(box: OrchardBounds.Box?, recenter: Boolean) {
+        val map = binding.mapView
+        if (box == null) return
+        map.setScrollableAreaLimitDouble(BoundingBox(box.north, box.east, box.south, box.west))
+        if (recenter) {
+            map.controller.setZoom(REGISTERED_ZOOM)
+            map.controller.setCenter(GeoPoint((box.south + box.north) / 2, (box.west + box.east) / 2))
+        }
+        map.invalidate()
+    }
+
+    /** Fallback extent from the locally-known rows when the server boundary
+     *  isn't cached yet (e.g. first use offline). */
+    private fun rowsBoundingBox(): OrchardBounds.Box? {
+        if (lastRows.isEmpty()) return null
+        var s = Double.MAX_VALUE; var w = Double.MAX_VALUE
+        var n = -Double.MAX_VALUE; var e = -Double.MAX_VALUE
+        lastRows.forEach { r ->
+            listOf(r.startLat to r.startLng, r.endLat to r.endLng).forEach { (lat, lng) ->
+                s = minOf(s, lat); n = maxOf(n, lat); w = minOf(w, lng); e = maxOf(e, lng)
+            }
+        }
+        val padLat = (n - s) * 0.1 + 0.0005
+        val padLng = (e - w) * 0.1 + 0.0005
+        return OrchardBounds.Box(s - padLat, w - padLng, n + padLat, e + padLng)
     }
 
     // ── Location loading & marker rendering ───────────────────────────────────
@@ -541,6 +626,8 @@ class MapActivity : AppCompatActivity() {
             if (activeTagFilter.isEmpty()) "Filter Tags" else "Filter Tags ✓"
         menu.findItem(R.id.action_toggle_rows)?.title =
             if (rowsVisible) "Hide Rows" else "Show Rows"
+        menu.findItem(R.id.action_lock_orchard)?.title =
+            if (lockedToOrchard) "Unlock Zoom & Extent" else "Lock to Orchard (z20)"
         menu.findItem(R.id.action_reset_coverage)?.isVisible = lastRows.isNotEmpty()
         return super.onPrepareOptionsMenu(menu)
     }
@@ -569,6 +656,11 @@ class MapActivity : AppCompatActivity() {
             R.id.action_toggle_rows -> {
                 rowsVisible = !rowsVisible
                 renderRows()
+                invalidateOptionsMenu()
+                true
+            }
+            R.id.action_lock_orchard -> {
+                applyOrchardLock(!lockedToOrchard)
                 invalidateOptionsMenu()
                 true
             }

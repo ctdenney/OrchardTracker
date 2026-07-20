@@ -13,6 +13,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/action_lock_orchard"
+        android:title="Lock to Orchard (z20)"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/action_download_offline"
         android:title="Download Offline Map"
         app:showAsAction="never" />
