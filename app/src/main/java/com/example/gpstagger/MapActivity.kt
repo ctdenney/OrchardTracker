@@ -41,6 +41,7 @@ class MapActivity : AppCompatActivity() {
         private const val MAP_PREFS = "map_prefs"
         private const val KEY_ROWS_VISIBLE = "rows_visible"
         private const val KEY_LOCK_ORCHARD = "lock_orchard"
+        private const val KEY_TAG_FILTER = "tag_filter"
 
         /** The Esri zoom that lines up with the ground (see the server's z20
          *  pin). Locking the map here keeps imagery and markers registered;
@@ -109,8 +110,9 @@ class MapActivity : AppCompatActivity() {
         }
 
         db = LocationDatabase.getDatabase(this)
-        rowsVisible = getSharedPreferences(MAP_PREFS, MODE_PRIVATE)
-            .getBoolean(KEY_ROWS_VISIBLE, true)
+        val prefs = getSharedPreferences(MAP_PREFS, MODE_PRIVATE)
+        rowsVisible = prefs.getBoolean(KEY_ROWS_VISIBLE, true)
+        activeTagFilter = prefs.getStringSet(KEY_TAG_FILTER, emptySet())?.toSet() ?: emptySet()
         setupMap()
         loadLocations()
         loadRows()
@@ -396,6 +398,13 @@ class MapActivity : AppCompatActivity() {
                 isAntiAlias = true
             }
             polyline.title = row.name
+            // Tap a row to see its name/block. Set every render so the label
+            // tracks the current row data even for reused polylines.
+            val rowLabel = if (row.block.isNotBlank()) "${row.block} — ${row.name}" else row.name
+            polyline.setOnClickListener { _, _, _ ->
+                Toast.makeText(this, rowLabel, Toast.LENGTH_SHORT).show()
+                true
+            }
         }
         binding.mapView.invalidate()
     }
@@ -453,6 +462,16 @@ class MapActivity : AppCompatActivity() {
 
     // ── Tag filter ────────────────────────────────────────────────────────────
 
+    /** Apply a tag filter and remember it across sessions. */
+    private fun setTagFilter(filter: Set<String>) {
+        activeTagFilter = filter
+        getSharedPreferences(MAP_PREFS, MODE_PRIVATE)
+            .edit().putStringSet(KEY_TAG_FILTER, filter).apply()
+        refreshMarkers()
+        populateLegend()
+        invalidateOptionsMenu()
+    }
+
     private fun showFilterDialog() {
         val presentTags = allLocations.map { it.tag }.distinct().sorted()
         if (presentTags.isEmpty()) {
@@ -473,16 +492,10 @@ class MapActivity : AppCompatActivity() {
             }
             .setPositiveButton("Apply") { _, _ ->
                 val selected = presentTags.filterIndexed { i, _ -> checked[i] }.toSet()
-                activeTagFilter = if (selected.size == presentTags.size) emptySet() else selected
-                refreshMarkers()
-                populateLegend()
-                invalidateOptionsMenu()
+                setTagFilter(if (selected.size == presentTags.size) emptySet() else selected)
             }
             .setNeutralButton("Show All") { _, _ ->
-                activeTagFilter = emptySet()
-                refreshMarkers()
-                populateLegend()
-                invalidateOptionsMenu()
+                setTagFilter(emptySet())
             }
             .setNegativeButton("Cancel", null)
             .show()

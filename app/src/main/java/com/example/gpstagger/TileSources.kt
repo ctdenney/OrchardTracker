@@ -14,14 +14,17 @@ object TileSources {
      */
     const val MAX_ZOOM = 22
     const val OSM_NATIVE_MAX = 19
-    const val ESRI_NATIVE_MAX = 19
+    // Esri World Imagery has real z20 tiles over the farm; past that its server
+    // returns "map data not yet available" placeholders, so cap native tiles at
+    // 20 and let osmdroid upscale beyond (see MAX_ZOOM).
+    const val ESRI_NATIVE_MAX = 20
 
     /**
      * Standard OpenStreetMap street tiles. Wraps the stock MAPNIK source so
      * we can extend the allowed zoom beyond OSM's native 19.
      */
     val OSM = XYTileSource(
-        "Mapnik", 0, MAX_ZOOM, 256, ".png",
+        "Mapnik", 0, OSM_NATIVE_MAX, 256, ".png",
         arrayOf(
             "https://a.tile.openstreetmap.org/",
             "https://b.tile.openstreetmap.org/",
@@ -37,7 +40,7 @@ object TileSources {
      * Attribution: Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community
      */
     val ESRI_SATELLITE = object : OnlineTileSourceBase(
-        "ESRISatellite", 0, MAX_ZOOM, 256, ".jpg",
+        "ESRISatellite", 0, ESRI_NATIVE_MAX, 256, ".jpg",
         arrayOf("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/")
     ) {
         override fun getTileURLString(pMapTileIndex: Long): String =
