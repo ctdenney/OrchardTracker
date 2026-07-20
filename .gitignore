@@ -12,3 +12,7 @@ app/build
 .externalNativeBuild
 .cxx
 local.properties
+
+# Build artifacts / logs (never commit; APKs ship via GitHub releases)
+*.apk
+crash.txt
