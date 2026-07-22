@@ -8,6 +8,7 @@ import android.os.Vibrator
 import android.text.InputType
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
@@ -26,10 +27,12 @@ import com.example.gpstagger.rows.CalibrationOffset
 import com.example.gpstagger.rows.CalibrationSession
 import com.example.gpstagger.rows.Geo
 import com.example.gpstagger.rows.RowTracker
+import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.abs
+import kotlin.math.hypot
 
 /**
  * Continuous row-tracking screen. Shows which row the operator is currently
@@ -85,10 +88,47 @@ class DriveModeActivity : AppCompatActivity() {
     private var lastCoverageWriteAt: Long = 0L
     private val coverageWriteIntervalMs = 1_500L
 
+    /** Open resume points (tank-end marks), observed from Room. */
+    private var resumePoints: List<ResumePointEntity> = emptyList()
+
+    /** Last row the tracker was locked to, kept briefly after the lock drops
+     *  so "mark tank end" still knows the row when the operator pulled
+     *  slightly out of the corridor before stopping. */
+    private var lastLockedRow: RowEntity? = null
+    private var lastLockedT: Double = 0.0
+    private var lastLockedAt: Long = 0L
+
+    /** Along-row span actually driven during the current pass (coverage-
+     *  eligible samples only), for the "last completed row" reminder. A brief
+     *  wrong-row lock or a headland crossing never spans enough to count. */
+    private var sessionRowUuid: String? = null
+    private var sessionRowLabel: String = ""
+    private var sessionMinT: Double? = null
+    private var sessionMaxT: Double? = null
+    private var lastCompletedRowLabel: String? = null
+
+    /** Resume points we've already offered to clear on this approach; cleared
+     *  again once the tractor moves away so re-approaching re-offers. */
+    private val promptedResumeUuids = HashSet<String>()
+
     companion object {
         /** Endpoints closer than this are almost certainly an accidental
          *  double-tap, not a real orchard row. */
         private const val MIN_ROW_LENGTH_M = 5.0
+
+        /** How long a dropped lock still counts for "mark tank end". */
+        private const val RECENT_LOCK_GRACE_MS = 15_000L
+
+        /** A pass must span at least this much of the row to count as having
+         *  completed it. */
+        private const val COMPLETED_SPAN = 0.85
+
+        /** Offer to clear a resume point inside this radius; re-arm outside
+         *  the larger one. */
+        private const val RESUME_NEAR_M = 10.0
+        private const val RESUME_REARM_M = 25.0
+
+        private const val STATE_LAST_COMPLETED = "lastCompletedRowLabel"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -115,6 +155,10 @@ class DriveModeActivity : AppCompatActivity() {
         binding.btnClearOffset.setOnClickListener { confirmClearOffset() }
         binding.btnRecordRow.setOnClickListener { onRecordRowButton() }
         binding.btnRecordRow.setOnLongClickListener { onRecordRowLongPress(); true }
+        binding.btnTankEnd.setOnClickListener { markTankEnd() }
+
+        lastCompletedRowLabel = savedInstanceState?.getString(STATE_LAST_COMPLETED)
+        renderLastCompleted()
 
         TagLibrary.ensureInitialized(this)
         tagButtons.forEachIndexed { slot, button ->
@@ -127,6 +171,10 @@ class DriveModeActivity : AppCompatActivity() {
             rows = latest ?: emptyList()
             renderCalibrationStatus()
             renderCoverageCounter()
+        }
+        db.resumePointDao().observeActive().observe(this) { latest ->
+            resumePoints = latest ?: emptyList()
+            renderResumeHint()
         }
 
         renderCalibrationStatus()
@@ -155,6 +203,11 @@ class DriveModeActivity : AppCompatActivity() {
 
     override fun onSupportNavigateUp(): Boolean {
         finish(); return true
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(STATE_LAST_COMPLETED, lastCompletedRowLabel)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -234,13 +287,25 @@ class DriveModeActivity : AppCompatActivity() {
         val state = tracker.update(corrected[0], corrected[1], rows)
         latestState = state
         renderTracker(state)
+        renderResumeHint()
 
-        // Persist coverage progress for the locked row. We throttle these
-        // writes since GPS comes in at 1–2 Hz and we don't need that
-        // resolution; even ~1 write/2 s gives sub-percent coverage accuracy.
+        state.row?.let { row ->
+            lastLockedRow = row
+            lastLockedT = state.alongFraction.coerceIn(0.0, 1.0)
+            lastLockedAt = System.currentTimeMillis()
+        }
+        trackPassCompletion(state)
+        checkResumeProximity(corrected[0], corrected[1])
+
+        // Persist coverage progress for the locked row, but only for samples
+        // the tracker judges coverage-eligible (settled lock + moving along
+        // the row) — coverage widening is permanent, so a stray sample on the
+        // wrong row must never count. We throttle these writes since GPS
+        // comes in at 1–2 Hz and we don't need that resolution; even
+        // ~1 write/2 s gives sub-percent coverage accuracy.
         val locked = state.row
         val now = System.currentTimeMillis()
-        if (locked != null && now - lastCoverageWriteAt >= coverageWriteIntervalMs) {
+        if (locked != null && state.coverageEligible && now - lastCoverageWriteAt >= coverageWriteIntervalMs) {
             lastCoverageWriteAt = now
             val uuid = locked.uuid
             val t = state.alongFraction.coerceIn(0.0, 1.0)
@@ -256,9 +321,11 @@ class DriveModeActivity : AppCompatActivity() {
     /**
      * Drop a resume point at the current position — where a tank ran empty —
      * so it's easy to drive back and pick up with the next tank. Records the
-     * locked row and along-row fraction as context when the tracker has one.
+     * locked row and along-row fraction as context; if the tight corridor
+     * gate already dropped the lock because the operator pulled aside to
+     * stop, a lock held within the last [RECENT_LOCK_GRACE_MS] still counts.
      * Syncs to the server (and the web map) on the next sync; several can be
-     * open at once.
+     * open at once. Undoable from the snackbar.
      */
     private fun markTankEnd() {
         val pos = currentCorrected
@@ -267,8 +334,14 @@ class DriveModeActivity : AppCompatActivity() {
             return
         }
         val state = latestState
-        val rowUuid = state?.row?.uuid ?: ""
-        val rowT = state?.row?.let { state.alongFraction.coerceIn(0.0, 1.0) }
+        var row = state?.row
+        var rowT = row?.let { state!!.alongFraction.coerceIn(0.0, 1.0) }
+        if (row == null && lastLockedRow != null &&
+            System.currentTimeMillis() - lastLockedAt <= RECENT_LOCK_GRACE_MS
+        ) {
+            row = lastLockedRow
+            rowT = lastLockedT
+        }
         val now = System.currentTimeMillis()
         val stamp = java.text.SimpleDateFormat("MMM d HH:mm", Locale.US).format(java.util.Date(now))
         val point = ResumePointEntity(
@@ -276,20 +349,106 @@ class DriveModeActivity : AppCompatActivity() {
             latitude = pos[0],
             longitude = pos[1],
             label = "Tank end $stamp",
-            rowUuid = rowUuid,
+            rowUuid = row?.uuid ?: "",
             rowT = rowT,
             createdAt = now,
             updatedAt = now,
             deleted = false,
             synced = false
         )
-        lifecycleScope.launch {
-            LocationDatabase.getDatabase(this@DriveModeActivity).resumePointDao().upsert(point)
+        val dao = LocationDatabase.getDatabase(this).resumePointDao()
+        lifecycleScope.launch { dao.upsert(point) }
+        val where = row?.let { " on ${it.name} (~${(rowT ?: 0.0).times(100).toInt()}%)" } ?: ""
+        Snackbar.make(binding.root, "Marked tank end$where", Snackbar.LENGTH_LONG)
+            .setAction("UNDO") {
+                // Soft delete so an already-synced point is tombstoned too.
+                lifecycleScope.launch { dao.softDelete(point.uuid) }
+            }
+            .show()
+    }
+
+    /** Flag line under the progress display when the locked row has an open
+     *  resume point — "drive to here and pick up". */
+    private fun renderResumeHint() {
+        val locked = latestState?.row
+        val rp = locked?.let { l -> resumePoints.firstOrNull { it.rowUuid == l.uuid } }
+        if (rp == null) {
+            binding.tvResumeHint.visibility = View.GONE
+            return
         }
-        val where = state?.row?.let {
-            " on ${it.name} (~${(rowT ?: 0.0).times(100).toInt()}%)"
-        } ?: ""
-        Toast.makeText(this, "Marked tank end$where", Toast.LENGTH_SHORT).show()
+        binding.tvResumeHint.visibility = View.VISIBLE
+        binding.tvResumeHint.text = rp.rowT?.let {
+            "⚑ resume at ${(it.coerceIn(0.0, 1.0) * 100).toInt()} % of this row"
+        } ?: "⚑ resume point on this row"
+    }
+
+    /**
+     * Track how much of the locked row this pass has actually driven
+     * (coverage-eligible samples only) and remember the row as "last
+     * completed" once the span crosses [COMPLETED_SPAN] — the skip-pattern
+     * reminder of which row the operator just did. Brief locks (headland
+     * crossings, wrong-row flickers) never span enough to qualify.
+     */
+    private fun trackPassCompletion(state: RowTracker.State) {
+        val uuid = state.row?.uuid
+        if (uuid != sessionRowUuid) {
+            sessionRowUuid = uuid
+            sessionRowLabel = state.row?.let { r ->
+                listOf(r.block, r.name).filter { it.isNotEmpty() }.joinToString(" ")
+            } ?: ""
+            sessionMinT = null
+            sessionMaxT = null
+        }
+        if (uuid == null || !state.coverageEligible) return
+        val t = state.alongFraction.coerceIn(0.0, 1.0)
+        sessionMinT = minOf(sessionMinT ?: t, t)
+        sessionMaxT = maxOf(sessionMaxT ?: t, t)
+        if ((sessionMaxT!! - sessionMinT!!) >= COMPLETED_SPAN &&
+            lastCompletedRowLabel != sessionRowLabel
+        ) {
+            lastCompletedRowLabel = sessionRowLabel
+            renderLastCompleted()
+        }
+    }
+
+    private fun renderLastCompleted() {
+        val label = lastCompletedRowLabel
+        if (label.isNullOrEmpty()) {
+            binding.tvLastRow.visibility = View.GONE
+        } else {
+            binding.tvLastRow.visibility = View.VISIBLE
+            binding.tvLastRow.text = "Last completed: $label"
+        }
+    }
+
+    /**
+     * When the tractor comes within [RESUME_NEAR_M] of an open resume point,
+     * offer to clear it — that's the moment the operator actually resumes.
+     * Each point is offered once per approach; driving back out past
+     * [RESUME_REARM_M] re-arms it.
+     */
+    private fun checkResumeProximity(lat: Double, lng: Double) {
+        for (rp in resumePoints) {
+            val (dx, dy) = Geo.toLocalMeters(rp.latitude, rp.longitude, lat, lng)
+            val d = hypot(dx, dy)
+            if (d <= RESUME_NEAR_M) {
+                if (promptedResumeUuids.add(rp.uuid)) {
+                    val dao = LocationDatabase.getDatabase(this).resumePointDao()
+                    Snackbar.make(
+                        binding.root,
+                        "At resume point: ${rp.label.ifEmpty { "unlabeled" }}",
+                        Snackbar.LENGTH_LONG
+                    )
+                        .setDuration(10_000)  // gloves + sun: give it 10 s
+                        .setAction("CLEAR") {
+                            lifecycleScope.launch { dao.softDelete(rp.uuid) }
+                        }
+                        .show()
+                }
+            } else if (d >= RESUME_REARM_M) {
+                promptedResumeUuids.remove(rp.uuid)
+            }
+        }
     }
 
     private fun renderTracker(state: RowTracker.State) {

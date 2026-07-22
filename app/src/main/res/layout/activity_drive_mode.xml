@@ -138,6 +138,25 @@
             android:text=""
             android:textColor="#666666"
             android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/tvResumeHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#EF9A9A"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvLastRow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#80CBC4"
+            android:textSize="16sp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- Tag buttons: same 2x3 grid as the main screen, fills remaining height -->
@@ -239,6 +258,20 @@
             android:maxLines="2"
             app:backgroundTint="@color/tag_mark" />
     </GridLayout>
+
+    <!-- Tank end: one big tap from the seat; undoable via snackbar -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnTankEnd"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="10dp"
+        android:layout_marginBottom="4dp"
+        android:text="⚑  MARK TANK END"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="@android:color/white"
+        android:textAllCaps="false"
+        app:backgroundTint="#B71C1C" />
 
     <!-- Calibration controls -->
     <LinearLayout
