@@ -54,7 +54,9 @@ class RowTrackerTest {
         assertEquals(0.25, state.alongFraction, 1e-6)
         assertEquals(25.0, state.alongDistanceM, 1e-3)
         assertEquals(100.0, state.rowLengthM, 1e-3)
-        assertEquals(2, state.candidates)
+        // B is 2.6 m away — outside its 1.5 m half-width + 1.0 m slack
+        // corridor, so it isn't even a candidate.
+        assertEquals(1, state.candidates)
     }
 
     @Test
@@ -83,10 +85,11 @@ class RowTrackerTest {
         val rows = listOf(rowA, rowB)
         assertEquals("A", tracker.updateAt(10.0, 0.0, rows).row?.name)
 
-        // 2.9 m north: B is 0.1 m away, advantage 2.8 m >= 1.5 m margin.
-        assertEquals("A", tracker.updateAt(11.0, 2.9, rows).row?.name)  // streak 1
-        assertEquals("A", tracker.updateAt(12.0, 2.9, rows).row?.name)  // streak 2
-        assertEquals("B", tracker.updateAt(13.0, 2.9, rows).row?.name)  // streak 3 -> switch
+        // 2.4 m north: both rows still candidates (corridor gate is 2.5 m);
+        // B is 0.6 m away, advantage 1.8 m >= 1.5 m margin.
+        assertEquals("A", tracker.updateAt(11.0, 2.4, rows).row?.name)  // streak 1
+        assertEquals("A", tracker.updateAt(12.0, 2.4, rows).row?.name)  // streak 2
+        assertEquals("B", tracker.updateAt(13.0, 2.4, rows).row?.name)  // streak 3 -> switch
     }
 
     @Test
@@ -95,12 +98,12 @@ class RowTrackerTest {
         val rows = listOf(rowA, rowB)
         tracker.updateAt(10.0, 0.0, rows)
 
-        tracker.updateAt(11.0, 2.9, rows)                               // streak 1
-        tracker.updateAt(12.0, 2.9, rows)                               // streak 2
+        tracker.updateAt(11.0, 2.4, rows)                               // streak 1
+        tracker.updateAt(12.0, 2.4, rows)                               // streak 2
         tracker.updateAt(13.0, 0.0, rows)                               // back near A: streak cleared
-        assertEquals("A", tracker.updateAt(14.0, 2.9, rows).row?.name)  // streak 1 again
-        assertEquals("A", tracker.updateAt(15.0, 2.9, rows).row?.name)  // streak 2
-        assertEquals("B", tracker.updateAt(16.0, 2.9, rows).row?.name)  // streak 3 -> switch
+        assertEquals("A", tracker.updateAt(14.0, 2.4, rows).row?.name)  // streak 1 again
+        assertEquals("A", tracker.updateAt(15.0, 2.4, rows).row?.name)  // streak 2
+        assertEquals("B", tracker.updateAt(16.0, 2.4, rows).row?.name)  // streak 3 -> switch
     }
 
     @Test
@@ -134,9 +137,60 @@ class RowTrackerTest {
     }
 
     @Test
-    fun `positions too far off any row yield no lock`() {
-        val state = RowTracker(maxPerpendicularM = 50.0).updateAt(50.0, 60.0, listOf(rowA))
-        assertNull(state.row)
+    fun `positions outside the row corridor yield no lock`() {
+        // 2.6 m from the centerline: just past the 1.5 m half-width + 1.0 m
+        // GPS-slack gate. Driving the orchard's outside edge must not record
+        // the nearest row.
+        assertNull(RowTracker().updateAt(50.0, 2.6, listOf(rowA)).row)
+        assertNotNull(RowTracker().updateAt(50.0, 2.4, listOf(rowA)).row)
+    }
+
+    @Test
+    fun `row width widens the candidacy corridor`() {
+        // 6 m wide row: corridor gate 3.0 + 1.0 = 4.0 m.
+        val wide = rowAt(0.0, "wide", widthM = 6.0)
+        assertNotNull(RowTracker().updateAt(10.0, 3.5, listOf(wide)).row)
+        assertNull(RowTracker().updateAt(10.0, 3.5, listOf(rowA)).row)
+    }
+
+    @Test
+    fun `coverage needs a settled lock and along-row movement`() {
+        val tracker = RowTracker()
+        val rows = listOf(rowA, rowB)
+        // Driving east along row A at 2 m per sample.
+        val s1 = tracker.updateAt(0.0, 0.0, rows)   // fresh lock, no heading yet
+        assertEquals(false, s1.coverageEligible)
+        val s2 = tracker.updateAt(2.0, 0.0, rows)   // aligned, but lock too young
+        assertEquals(false, s2.coverageEligible)
+        val s3 = tracker.updateAt(4.0, 0.0, rows)   // 3rd locked sample, aligned
+        assertEquals(true, s3.coverageEligible)
+        assertEquals(3, s3.lockSamples)
+    }
+
+    @Test
+    fun `stationary jitter keeps the previous alignment verdict`() {
+        val tracker = RowTracker()
+        val rows = listOf(rowA)
+        tracker.updateAt(0.0, 0.0, rows)
+        tracker.updateAt(2.0, 0.0, rows)
+        assertEquals(true, tracker.updateAt(4.0, 0.0, rows).coverageEligible)
+        // Paused mid-row: a 0.2 m jitter step carries no heading — the
+        // previous aligned verdict stands.
+        assertEquals(true, tracker.updateAt(4.1, 0.2, rows).coverageEligible)
+    }
+
+    @Test
+    fun `crossing a row end on the headland never becomes coverage eligible`() {
+        // Drive north straight across row A near its end (x = 98), the way a
+        // headland turn sweeps over the ends of adjacent rows. The row may
+        // lock briefly, but perpendicular movement must not count as coverage.
+        val tracker = RowTracker()
+        val rows = listOf(rowA)
+        var y = -2.0
+        while (y <= 2.0) {
+            assertEquals(false, tracker.updateAt(98.0, y, rows).coverageEligible)
+            y += 1.0
+        }
     }
 
     @Test
